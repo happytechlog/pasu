@@ -1,25 +1,25 @@
 # HANDOFF
 
-_마지막 갱신: 2026-10-31 · 5단계(대시보드) 완료_
+_마지막 갱신: 2026-10-31 · 6단계(알림) 완료_
 
 ## 현재 상태
-- 동작함: 인증, 모니터 CRUD, 워커, 대시보드. 목록(`/`)에는 상태 배지, 최근 30회 히트바, 응답시간, 24h 가동률, SSL 남은 일수(7단계 전이라 대부분 "—")가 있다. 상세(`/monitors/[id]?range=24h|7d|30d`)에는 가동률 3종, 응답시간 차트(호버 툴팁, 실패/공백 구간 띠), 장애 이력 20건, 최근 체크 30건이 있다. 두 화면 모두 30초마다 `router.refresh()`로 갱신된다.
-- typecheck, lint, build, test(73개) 통과. 브라우저로 목록·상세(3개 기간)·호버·자동 갱신(이동 없이 체크 수 증가)·DOWN 배지 전환을 확인했다.
-- 로컬 DB에 테스트 데이터가 있다: 관리자 `admin@example.com` / `password1234`, 모니터 3개(Example, 실패 테스트 → `/api/test/fail?status=503`, 히스토리 데모 → 30일치 합성 체크 8,640건과 장애 2건, SSL 만료 10일 후로 임의 설정). 필요 없으면 지운다.
+- 동작함: 인증, 모니터 CRUD, 워커, 대시보드, 알림. `/settings/alerts`(헤더 "알림채널", 로그인한 누구나)에서 Slack webhook·이메일 채널을 추가·켜기/끄기·삭제하고 테스트 발송한다. webhook은 `••••WXYZ`처럼 끝 4자리만 보이며 전체 URL은 클라이언트로 보내지 않는다. 워커는 down/recovered 때 모니터에 연결된 켜진 채널로 보낸다(`alert sent|failed: …` 로그).
+- typecheck, lint, build, test(83개) 통과. 실제로 확인한 것: 채널 추가, 잘못된 Slack URL 거부, 테스트 발송(이메일 → Mailpit 도착, 가짜 Slack → "실패: Slack 응답 404: no_team" 표시), 복구 알림("다운 시간 24분"), 다운 알림(원인·감지 시각·상세 링크), 꺼진 채널에는 미발송, Slack 실패가 상태 전이에 영향 없음.
+- **실제 Slack 발송은 확인하지 못했다**(진짜 webhook이 없음). 요청 형식은 `slack.test.ts`에서 fetch 목으로 검증했다. 진짜 webhook으로 "테스트 발송" 한 번 눌러 보면 된다.
+- 로컬 DB 테스트 데이터: 관리자 `admin@example.com` / `password1234`, 모니터 3개(실패 테스트는 지금 `/api/health`를 보고 있음), 채널 2개(운영팀 Slack = 가짜 webhook, 운영팀 메일 = ops@example.com, 둘 다 실패 테스트에 연결됨).
 
-## 다음 할 일: 6단계 알림
-- `/settings/alerts`에서 Slack webhook·이메일 채널 CRUD(webhook은 끝 4자리만 표시), "테스트 발송" 버튼. 헤더 메뉴에 "알림채널"을 추가한다.
-- 발송 코드는 `src/lib/notify/`(slack, email; `src/lib/mail.ts` 재사용). 워커의 `checkOne`(`worker/index.ts`)에서 `out.event`(`"down"` | `"recovered"`)일 때 모니터에 연결된 활성 채널로 보낸다. 메시지 형식은 PLAN.md의 "알림 메시지 예"를 따른다.
-- 발송 실패가 체크 기록이나 상태 전이를 막으면 안 된다(트랜잭션 밖에서 보내고 에러는 로그만).
+## 다음 할 일: 7단계 SSL
+- 워커에서 하루 1회 https 모니터의 인증서 만료일을 `tls.connect`로 조회해 `monitors.sslExpiresAt`/`sslCheckedAt`에 저장한다(대시보드는 이미 이 값을 표시함). 순수 판정 로직은 `src/lib/monitor/ssl.ts`에 두고 테스트한다.
+- 14/7/1일 전에 한 번씩 알린다. 중복 방지는 `ssl_alerts_sent` 테이블(모니터, 만료일, 임계값 유니크)로 하고 마이그레이션을 만든다. 인증서가 갱신되면 만료일이 바뀌므로 자연히 다시 알릴 수 있다.
+- 알림 문구는 `src/lib/notify/message.ts`의 `AlertEvent`에 `ssl` 종류를 추가하고 `notifyMonitorEvent`를 재사용한다. 테스트는 https://expired.badssl.com 등.
 
 ## 미해결·결정 필요
-- 장애 중 일시정지 → 재개 → 다시 down이면 같은 장애로 보고 `event`를 null로 만든다(중복 알림 방지, 4단계에서 구현됨).
+- 알림 발송 실패 시 재시도·기록이 없다(로그만). 필요하면 나중에 `alert_log` 테이블.
+- 채널 수정(이름·대상 변경) 화면은 없다. 삭제 후 다시 추가한다.
 - `/api/health`는 공개 상태다. 비밀번호 재설정 기능은 없다.
-- 차트 버킷의 평균은 성공한 체크만 포함한다. 버킷 전체가 실패면 선이 끊기고 아래 띠가 빨간색이 된다.
 
 ## 알아둘 것
-- **Windows에서 `TaskStop`은 자식 프로세스를 남긴다.** `npm run dev`는 3000번을 계속 점유하고, `npm run worker:start`의 tsx 프로세스도 계속 체크를 돈다. 멈춘 뒤 `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`로 `simple_monitoring` 명령줄을 가진 프로세스를 찾아 종료한다.
-- `npm run build` 후 열려 있던 페이지에서 dev 서버로 Server Action을 보내면 "Failed to find Server Action"이 난다. 페이지를 새로 열면 된다.
-- Next 16은 방문한 페이지를 숨긴 채 DOM에 남긴다(Activity). 브라우저 테스트에서는 보이는 요소만 고른다. Aside REPL은 호출마다 새 세션이라 `listBrowserTabs()` → `attachBrowserTab()`으로 다시 붙고, 스크린샷은 `./artifacts/`(세션 폴더)에만 저장된다.
-- `/api/test/*`는 개발 환경에서만 공개되고, 프로덕션 빌드에서는 정적 404다.
-- 선점 시 `nextCheckAt = now + interval`로 미리 밀어 두므로 체크 간격이 일정하고 워커 여러 개도 안전하다.
+- Windows에서 `TaskStop`은 자식 프로세스(next dev, tsx 워커)를 남긴다. `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`로 `simple_monitoring` 명령줄을 확인하고 PID로 종료한다.
+- 클라이언트 컴포넌트가 `actions.ts`를 직접 import하면 dev에서 새로고침 루프가 생긴다(CLAUDE.md 참고). 증상은 dev 로그에 `Compiled in 1ms` + 같은 GET이 1초마다 반복되는 것.
+- Aside REPL: 호출마다 새 세션이라 `listBrowserTabs()`→`attachBrowserTab()`으로 다시 붙는다. `closeTab()`이 실제로 탭을 닫지 못할 수 있고, 창이 백그라운드면 스크린샷이 시간 초과된다. `getByLabel`/`getByRole`은 되고 `.nth()`는 안 된다.
+- 알림 상세 링크의 기준 URL은 `APP_URL`, 없으면 `BETTER_AUTH_URL`이다.
