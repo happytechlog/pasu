@@ -43,7 +43,8 @@ npm run db:studio
 - 웹과 워커가 함께 쓰는 코드는 `src/lib/` 아래에 둔다. 이 코드는 Next 전용 API(`next/*`, React)에 의존하지 않아야 워커에서도 돌아간다.
   - `src/lib/db/`: Drizzle 클라이언트(개발 중 핫리로드를 위해 pg Pool을 `globalThis`에 캐시)와 스키마
   - `src/lib/mail.ts`: nodemailer 발송(초대 메일, 이후 이메일 알림)
-  - 이후 단계: `src/lib/monitor/`(체크·판정·SSL, 단위 테스트 대상), `src/lib/notify/`(slack/email, 웹의 "테스트 발송"에서도 사용)
+  - `src/lib/monitor/`: 기대 상태코드 파서·매처(`expected-status.ts`), 폼 zod 스키마(`input.ts`). 이후 체크·판정·SSL도 여기에 둔다(단위 테스트 대상)
+  - 이후 단계: `src/lib/notify/`(slack/email, 웹의 "테스트 발송"에서도 사용)
 - 웹 전용 서버 코드는 `src/server/`(`import "server-only"`)에 둔다. `auth.ts`(Better Auth 설정), `session.ts`(DAL: `getCurrentUser`/`requireUser`/`requireAdmin`), `invitations.ts`
 - 인증 구조: `src/proxy.ts`(Next 16에서 middleware가 proxy로 이름이 바뀜)는 쿠키 유무만 보는 낙관적 검사다. **실제 권한 검사는 모든 페이지(Suspense 안)와 Server Action에서 `requireUser()`/`requireAdmin()`으로 다시 한다.** 공개 경로 목록은 `proxy.ts`의 `PUBLIC_PREFIXES`
   - 공개 가입은 `disabledPaths: ["/sign-up/email"]`로 막고, 계정은 서버에서 `auth.api.signUpEmail`로만 만든다(`/setup`, `/invite/[token]`). `role`은 `input: false`라 가입 후 DB에서 직접 설정한다.
