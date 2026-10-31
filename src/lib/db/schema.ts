@@ -10,7 +10,93 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-// Auth tables (user/session/account) are added in stage 2 by Better Auth.
+// ---------------------------------------------------------------------------
+// Auth tables. Shape follows Better Auth's core schema (user, session,
+// account, verification); `role` is an additional field configured in
+// src/lib/auth.ts.
+// ---------------------------------------------------------------------------
+
+export const userRole = pgEnum("user_role", ["admin", "member"]);
+
+export const user = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  role: userRole("role").notNull().default("member"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const session = pgTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [index("session_user_id_idx").on(t.userId)],
+);
+
+export const account = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("account_user_id_idx").on(t.userId)],
+);
+
+export const verification = pgTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("verification_identifier_idx").on(t.identifier)],
+);
+
+// Invite-only sign-up. The raw token is only ever in the emailed link;
+// the DB stores its SHA-256 hash.
+export const invitations = pgTable("invitations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull(),
+  role: userRole("role").notNull().default("member"),
+  tokenHash: text("token_hash").notNull().unique(),
+  invitedBy: text("invited_by").references(() => user.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// Monitoring tables
+// ---------------------------------------------------------------------------
 
 export const monitorStatus = pgEnum("monitor_status", ["pending", "up", "down"]);
 export const httpMethod = pgEnum("http_method", ["GET", "HEAD"]);
@@ -30,7 +116,7 @@ export const monitors = pgTable("monitors", {
   nextCheckAt: timestamp("next_check_at", { withTimezone: true }).notNull().defaultNow(),
   sslExpiresAt: timestamp("ssl_expires_at", { withTimezone: true }),
   sslCheckedAt: timestamp("ssl_checked_at", { withTimezone: true }),
-  createdBy: text("created_by"), // FK to user added in stage 2
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

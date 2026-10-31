@@ -8,6 +8,13 @@
       "when": 1793481131494,
       "tag": "0000_classy_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793482169154,
+      "tag": "0001_auth",
+      "breakpoints": true
     }
   ]
 }
