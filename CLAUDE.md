@@ -2,7 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-UptimeRobot과 비슷한 웹사이트 가동 모니터링 서비스. 단계별로 구현 중이다: 뼈대(완료) → 인증 → 모니터 CRUD → 워커 체크 루프 → 대시보드 → 알림 → SSL → 공개 상태 페이지 → 정리. 단계마다 실행해서 확인한 뒤 커밋한다.
+UptimeRobot과 비슷한 웹사이트 가동 모니터링 서비스. 전체 계획과 단계별 범위는 `docs/PLAN.md`에 있다. 단계 작업을 시작할 때 해당 단계를 읽는다.
+
+## 작업 규칙: 단계가 끝날 때마다
+1. 실행해서 확인하고 typecheck, lint, build, test를 통과시킨 뒤 커밋한다.
+2. `docs/PLAN.md`에서 해당 단계를 체크한다. 범위가 바뀌었으면 함께 고친다.
+3. `docs/HANDOFF.md`를 **새로 쓴다(누적하지 않는다).** 현재 동작하는 것, 다음 단계와 시작 전에 확인할 것, 미해결 이슈, 알아둘 함정을 30줄 이내로 쓴다.
+4. 명령어, 아키텍처, 늘 지킬 규칙이 바뀐 경우에만 이 파일(CLAUDE.md)을 고친다.
+5. 2~4의 문서 변경은 별도 커밋(`docs: ...`)으로 남긴다.
+
+## 현재 진행 상황
+@docs/HANDOFF.md
 
 ## 명령어
 ```bash
