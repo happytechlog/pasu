@@ -2,30 +2,42 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 프로젝트 상태
-UptimeRobot과 비슷한 웹사이트 가동 모니터링 서비스. **아직 코드가 없는 계획 단계**이며, 아래 내용은 확정된 설계다. 1단계(뼈대) 구현 후 실제 명령어와 구조로 이 파일을 갱신할 것.
+UptimeRobot과 비슷한 웹사이트 가동 모니터링 서비스. 단계별로 구현 중이다: 뼈대(완료) → 인증 → 모니터 CRUD → 워커 체크 루프 → 대시보드 → 알림 → SSL → 공개 상태 페이지 → 정리. 단계마다 실행해서 확인한 뒤 커밋한다.
 
-## 확정된 결정사항
-- 스택: Next.js(App Router) + TypeScript, Tailwind + shadcn/ui, Recharts, PostgreSQL + Drizzle ORM, Better Auth(이메일+비밀번호), Nodemailer(SMTP), Slack Incoming Webhook, Vitest
-- 실행 환경: 우선 Windows 로컬. Postgres와 Mailpit은 Docker Compose로 실행. 나중에 서버로 옮길 수 있게 web/worker Dockerfile 유지
-- 회원가입: 공개 가입 없음. 사용자가 0명일 때 `/setup`에서 첫 관리자를 만들고, 이후에는 관리자가 보낸 초대 링크(`/invite/[token]`)로만 가입
-- 공유 범위: 팀 전체 공유. 모니터와 알림 채널에 사용자별 소유 구분이 없음(`createdBy`는 기록용)
-- 체크 간격: 1분 또는 5분. 체크 결과 보관 기간은 30일(`CHECK_RETENTION_DAYS`)
-- 1차 범위에 SSL 만료 알림과 공개 상태 페이지 포함
+## 명령어
+```bash
+docker compose up -d --wait   # Postgres(5432) + Mailpit(SMTP 1025, UI http://localhost:8025). Docker Desktop이 켜져 있어야 함
+cp .env.example .env          # 최초 1회
+npm run dev                   # 웹 http://localhost:3000
+npm run worker                # 워커(watch 모드). 1회 실행은 npm run worker:start
+npm run typecheck             # next typegen 후 tsc (LayoutProps 등 라우트 타입은 생성된 것이라 typegen이 필요)
+npm run lint
+npm run build                 # Cache Components 검증이 빌드 때 모든 라우트에 대해 실행됨
+npm test                      # vitest run
+npx vitest run path/to/file.test.ts -t "test name"   # 단일 테스트
+npm run db:generate           # schema.ts 변경 → drizzle/ 에 SQL 마이그레이션 생성 (생성 파일도 커밋)
+npm run db:migrate            # 마이그레이션 적용
+npm run db:studio
+```
 
-## 아키텍처 (big picture)
-- **웹(Next.js)과 워커(`worker/index.ts`, 상시 실행 Node 프로세스)가 분리**되어 있고 같은 Postgres를 공유한다. 1분 간격 체크는 서버리스 크론이 아니라 워커가 담당한다.
-- Drizzle 스키마(`src/lib/db/schema.ts`), 체크·판정 로직(`src/lib/monitor/`), 알림 발송(`src/lib/notify/`)은 웹과 워커가 함께 쓰는 공용 코드다. 웹은 "테스트 발송"에 notify를 사용한다.
-- 워커 루프: 10초마다 `nextCheckAt <= now AND enabled`인 모니터를 조회하고, 동시성 20으로 fetch(AbortController 타임아웃)를 실행한다. 결과는 `checks`에 저장한다.
-- 상태 판정: **연속 2회 실패 시 down, 1회 성공 시 up.** 상태가 바뀔 때만 `incidents`를 열거나 닫고 다운/복구 알림을 보낸다. 체크할 때마다 알림을 보내지 않는다.
-- SSL: https 모니터는 하루 1회 `tls.connect`로 만료일을 조회한다. 14/7/1일 전에 한 번씩 알리고, `ssl_alerts_sent`로 중복을 막는다.
-- 인증 보호: 미들웨어가 `/status/*`, `/login`, `/setup`, `/invite/*` 외의 모든 경로를 보호한다. 공개 상태 페이지에는 URL과 에러 상세를 노출하지 않는다.
-- 대시보드 갱신은 30초 폴링. 웹소켓은 쓰지 않는다.
+## Next.js 16 주의사항
+- `AGENTS.md`를 따른다. 학습 데이터와 API가 다르므로 코드를 쓰기 전에 `node_modules/next/dist/docs/`의 해당 문서를 확인한다.
+- `next.config.ts`에서 **`cacheComponents: true`**를 쓴다. 그래서 `export const dynamic` / `revalidate` / `fetchCache` 라우트 설정은 **에러가 난다.**
+  - 페이지에서 요청 시점 데이터(DB 조회, cookies, headers)를 읽는 컴포넌트는 `<Suspense>` 안에 두고, 필요하면 `await connection()`(`next/server`)을 호출한다. 예시는 `src/app/page.tsx`
+  - Route Handler는 DB 조회만으로도 요청 시점에 실행되므로 별도 설정이 필요 없다.
+  - 캐시할 데이터는 `"use cache"`를 쓴다.
+- shadcn 스타일이 `base-nova`라서 컴포넌트가 Radix가 아니라 **`@base-ui/react`** 기반이다. `cn`은 `clsx`/`tailwind-merge`가 아니라 shadcn의 `cn` 패키지에서 온다(`src/lib/utils.ts`). 컴포넌트는 `npx shadcn@latest add <name>`으로 추가한다.
 
-## 설정값 위치
-- `.env`(커밋 금지, `.env.example`만 커밋): `DATABASE_URL`, `BETTER_AUTH_SECRET`, `SMTP_HOST/PORT/USER/PASS/FROM`, `CHECK_RETENTION_DAYS`
-- DB(대시보드에서 관리): 수신 이메일 주소와 Slack webhook URL(`alert_channels`). webhook URL은 화면에서 끝 4자리만 보이게 마스킹한다.
-- 로컬에서는 SMTP를 Mailpit(`localhost:1025`, 웹 UI `http://localhost:8025`)으로 보내 실제 발송을 막는다.
+## 아키텍처
+- **웹(Next.js)과 워커(`worker/index.ts`, 상시 실행 Node 프로세스, tsx로 실행)가 분리**되어 있고 같은 Postgres를 공유한다. 주기적 체크는 서버리스 크론이 아니라 워커가 한다. 워커는 `dotenv/config`로 `.env`를 직접 읽는다.
+- 웹과 워커가 함께 쓰는 코드는 `src/lib/` 아래에 둔다. 이 코드는 Next 전용 API(`next/*`, React)에 의존하지 않아야 워커에서도 돌아간다.
+  - `src/lib/db/`: Drizzle 클라이언트(개발 중 핫리로드를 위해 pg Pool을 `globalThis`에 캐시)와 스키마
+  - 이후 단계: `src/lib/monitor/`(체크·판정·SSL, 단위 테스트 대상), `src/lib/notify/`(slack/email, 웹의 "테스트 발송"에서도 사용)
+- 워커 설계(4단계 이후): 10초마다 `nextCheckAt <= now AND enabled`인 모니터를 조회하고, 동시성 20으로 fetch(AbortController 타임아웃)를 실행한다. 결과는 `checks`에 저장한다. **연속 2회 실패 시 down, 1회 성공 시 up.** 상태가 바뀔 때만 `incidents`를 열거나 닫고 알림을 보낸다. SSL은 하루 1회 `tls.connect`로 확인하고, 14/7/1일 전에 한 번씩 알린다. 보관 기간(`CHECK_RETENTION_DAYS`, 기본 30일)이 지난 `checks`는 하루 1회 삭제한다.
 
-## 개발 진행 방식
-계획된 단계: 뼈대 → 인증 → 모니터 CRUD → 워커 → 대시보드 → 알림 → SSL → 상태 페이지 → 정리. 단계마다 실행해서 확인한 뒤 커밋한다. 전체 계획은 사용자 계획 파일을 참고한다.
+## 확정된 제품 결정
+- 공개 가입 없음. 사용자가 0명일 때 `/setup`에서 첫 관리자를 만들고, 이후에는 관리자가 보낸 초대 링크(`/invite/[token]`, 7일 유효)로만 가입한다. 인증은 Better Auth(이메일+비밀번호)이고, auth 테이블은 2단계에서 추가한다. 그때 `monitors.createdBy`에 user FK를 연결한다.
+- **팀 전체 공유**: 모니터와 알림 채널에 사용자별 소유 구분이 없다.
+- 보호 경로: `/status/*`, `/login`, `/setup`, `/invite/*`를 뺀 모든 경로. 공개 상태 페이지에는 URL과 에러 상세를 노출하지 않는다.
+- 설정값 위치: SMTP 서버, DB, 인증 시크릿은 `.env`(`.env.example`만 커밋). 수신 이메일과 Slack webhook URL은 대시보드에서 관리하며 DB(`alert_channels`)에 저장한다. webhook URL은 화면에서 끝 4자리만 보이게 마스킹한다.
+- 대시보드 갱신은 30초 폴링이다. 웹소켓은 쓰지 않는다. UI 문구는 한국어로 쓴다.
