@@ -10,7 +10,7 @@ UptimeRobot과 비슷한 웹사이트 가동 모니터링. 여러 사이트를 1
 - [x] **4. 워커**: 체크 루프, `checks` 저장, 상태 판정(연속 2회 실패 시 down, 기대 상태코드는 `matchesExpectedStatus`로 판정), `incidents`(모니터당 열린 장애 1건). 판정 로직은 Vitest로 테스트. 개발용 `/api/test/fail`, `/api/test/slow`
 - [x] **5. 대시보드**: 목록(상태 배지, 응답시간, 24h 가동률, 최근 체크 히트바, SSL 남은 일수), 상세 `/monitors/[id]`(응답시간 차트 24h/7d/30d, 가동률, 장애 이력, 최근 체크), 30초 폴링. 가동률 = 기간 내 성공 체크 비율
 - [x] **6. 알림**: `/settings/alerts`에서 Slack webhook·이메일 채널 관리(추가·켜기/끄기·삭제, webhook 마스킹, Slack URL은 `https://hooks.slack.com/services/`만 허용), 테스트 발송, 다운/복구 알림(발송 실패는 로그만, 재시도 없음)
-- [ ] **7. SSL**: 하루 1회 만료일 조회, 14/7/1일 전 알림(`ssl_alerts_sent` 테이블로 중복 방지)
+- [x] **7. SSL**: 하루 1회 만료일 조회(실패 시 약 1시간 뒤 재시도), 14/7/1일 전 알림(`ssl_alerts_sent` 테이블로 중복 방지, 만료된 인증서는 1일 임계값으로 한 번), URL 변경 시 저장된 만료일 초기화
 - [ ] **8. 공개 상태 페이지**: `status_pages`, `status_page_monitors` 테이블, `/settings/status-pages`, `/status/[slug]`(현재 상태와 90일 가동률 막대, URL과 에러 상세 숨김)
 - [ ] **9. 정리**: 오래된 `checks` 삭제(`CHECK_RETENTION_DAYS`), web/worker Dockerfile, compose 통합
 
