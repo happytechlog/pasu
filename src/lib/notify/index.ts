@@ -1,0 +1,77 @@
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { alertChannels, monitorAlertChannels } from "../db/schema";
+import { sendMail } from "../mail";
+import { formatAlert, type AlertEvent, type AlertMessage } from "./message";
+
+// Sending alerts. Shared lib code (worker + web "테스트 발송"): no Next/React imports.
+
+export type Channel = { id: string; type: "slack" | "email"; name: string; target: string };
+
+const SLACK_TIMEOUT_MS = 10_000;
+
+function appUrl() {
+  return process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+}
+
+export async function sendSlack(webhookUrl: string, text: string): Promise<void> {
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+    redirect: "error",
+    signal: AbortSignal.timeout(SLACK_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const body = (await res.text().catch(() => "")).slice(0, 100);
+    throw new Error(`Slack 응답 ${res.status}${body ? `: ${body}` : ""}`);
+  }
+}
+
+export async function sendToChannel(channel: Channel, msg: AlertMessage): Promise<void> {
+  if (channel.type === "slack") return sendSlack(channel.target, msg.text);
+  return sendMail({ to: channel.target, subject: `[Uptime Monitor] ${msg.subject}`, text: msg.text });
+}
+
+/** Short reason for showing a send failure to users / logs. */
+export function describeSendError(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.name === "TimeoutError") return `시간 초과 (${SLACK_TIMEOUT_MS / 1000}초)`;
+    return err.message;
+  }
+  return String(err);
+}
+
+export type SendResult = { channel: Channel; error: string | null };
+
+/** Sends to all channels in parallel; never throws. */
+export async function sendToChannels(channels: Channel[], msg: AlertMessage): Promise<SendResult[]> {
+  const settled = await Promise.allSettled(channels.map((c) => sendToChannel(c, msg)));
+  return settled.map((r, i) => ({
+    channel: channels[i],
+    error: r.status === "rejected" ? describeSendError(r.reason) : null,
+  }));
+}
+
+/** Enabled channels linked to a monitor. */
+export async function channelsForMonitor(monitorId: string): Promise<Channel[]> {
+  return db
+    .select({ id: alertChannels.id, type: alertChannels.type, name: alertChannels.name, target: alertChannels.target })
+    .from(monitorAlertChannels)
+    .innerJoin(alertChannels, eq(alertChannels.id, monitorAlertChannels.channelId))
+    .where(and(eq(monitorAlertChannels.monitorId, monitorId), eq(alertChannels.enabled, true)));
+}
+
+/** Sends a down/recovered alert to the monitor's enabled channels. Never throws. */
+export async function notifyMonitorEvent(event: Exclude<AlertEvent, { kind: "test" }>): Promise<SendResult[]> {
+  let channels: Channel[];
+  try {
+    channels = await channelsForMonitor(event.monitor.id);
+  } catch (err) {
+    return [{ channel: { id: "", type: "email", name: "(채널 조회)", target: "" }, error: describeSendError(err) }];
+  }
+  if (channels.length === 0) return [];
+  return sendToChannels(channels, formatAlert(event, appUrl()));
+}
+
+export { formatAlert };

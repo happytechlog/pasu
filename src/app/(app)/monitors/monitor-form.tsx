@@ -90,7 +90,11 @@ export function MonitorForm({
           <legend className="mb-1.5 text-sm font-medium">알림 채널</legend>
           {channels.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              등록된 알림 채널이 없습니다. 채널은 알림 설정에서 추가할 수 있습니다.
+              등록된 알림 채널이 없습니다. 채널은{" "}
+              <Link href="/settings/alerts" className="underline underline-offset-2">
+                알림채널
+              </Link>
+              에서 추가할 수 있습니다.
             </p>
           ) : (
             channels.map((c) => (

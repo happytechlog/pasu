@@ -2,7 +2,9 @@ import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../src/lib/db";
 import { runCheck } from "../src/lib/monitor/check";
-import { claimDueMonitors, mapLimit, recordResult, type DueMonitor } from "../src/lib/monitor/runner";
+import { claimDueMonitors, mapLimit, recordResult, type DueMonitor, type RecordOutcome } from "../src/lib/monitor/runner";
+import { formatDuration } from "../src/lib/monitor/stats";
+import { notifyMonitorEvent } from "../src/lib/notify";
 
 const TICK_MS = 10_000;
 const CONCURRENCY = 20;
@@ -12,18 +14,31 @@ const log = (...args: unknown[]) => console.log(new Date().toISOString(), "[work
 
 async function checkOne(m: DueMonitor) {
   const result = await runCheck(m);
+  let out: RecordOutcome;
   try {
-    const out = await recordResult(m.id, result);
-    if (out.skipped) return;
-    if (out.event === "down") {
-      log(`DOWN ${m.name} — ${m.url} · 원인: ${result.error}`);
-    } else if (out.event === "recovered") {
-      const mins = out.incidentStartedAt ? Math.round((Date.now() - out.incidentStartedAt.getTime()) / 60000) : null;
-      log(`UP ${m.name} 복구${mins !== null ? ` — 다운 시간 ${mins}분` : ""}`);
-    }
-    // Stage 6: send Slack/email alerts for out.event here.
+    out = await recordResult(m.id, result);
   } catch (err) {
     log(`failed to record result for ${m.name} (${m.id}):`, err);
+    return;
+  }
+  if (out.skipped || !out.event) return;
+
+  // Alerts go out after the transaction has committed; a failed send never
+  // affects the stored check or the status transition.
+  const monitor = { id: m.id, name: m.name, url: m.url };
+  const now = new Date();
+  let results;
+  if (out.event === "down") {
+    log(`DOWN ${m.name} — ${m.url} · 원인: ${result.error}`);
+    results = await notifyMonitorEvent({ kind: "down", monitor, reason: result.error, at: now });
+  } else {
+    const downtimeMs = out.incidentStartedAt ? now.getTime() - out.incidentStartedAt.getTime() : null;
+    log(`UP ${m.name} 복구${downtimeMs !== null ? ` — 다운 시간 ${formatDuration(downtimeMs)}` : ""}`);
+    results = await notifyMonitorEvent({ kind: "recovered", monitor, downtimeMs, at: now });
+  }
+  for (const r of results) {
+    if (r.error) log(`alert failed: ${m.name} → ${r.channel.name} (${r.channel.type}): ${r.error}`);
+    else log(`alert sent: ${m.name} → ${r.channel.name} (${r.channel.type})`);
   }
 }
 
