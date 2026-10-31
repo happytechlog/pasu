@@ -7,8 +7,10 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Auth tables. Shape follows Better Auth's core schema (user, session,
@@ -102,26 +104,31 @@ export const monitorStatus = pgEnum("monitor_status", ["pending", "up", "down"])
 export const httpMethod = pgEnum("http_method", ["GET", "HEAD"]);
 export const channelType = pgEnum("channel_type", ["slack", "email"]);
 
-export const monitors = pgTable("monitors", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  url: text("url").notNull(),
-  method: httpMethod("method").notNull().default("GET"),
-  intervalSec: integer("interval_sec").notNull().default(60), // 60 or 300
-  timeoutMs: integer("timeout_ms").notNull().default(10000),
-  // Comma-separated codes or classes, e.g. "2xx" or "200,301,4xx".
-  // Parsed by src/lib/monitor/expected-status.ts.
-  expectedStatus: text("expected_status").notNull().default("2xx"),
-  enabled: boolean("enabled").notNull().default(true),
-  status: monitorStatus("status").notNull().default("pending"),
-  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
-  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-  nextCheckAt: timestamp("next_check_at", { withTimezone: true }).notNull().defaultNow(),
-  sslExpiresAt: timestamp("ssl_expires_at", { withTimezone: true }),
-  sslCheckedAt: timestamp("ssl_checked_at", { withTimezone: true }),
-  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const monitors = pgTable(
+  "monitors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    url: text("url").notNull(),
+    method: httpMethod("method").notNull().default("GET"),
+    intervalSec: integer("interval_sec").notNull().default(60), // 60 or 300
+    timeoutMs: integer("timeout_ms").notNull().default(10000),
+    // Comma-separated codes or classes, e.g. "2xx" or "200,301,4xx".
+    // Parsed by src/lib/monitor/expected-status.ts.
+    expectedStatus: text("expected_status").notNull().default("2xx"),
+    enabled: boolean("enabled").notNull().default(true),
+    status: monitorStatus("status").notNull().default("pending"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    nextCheckAt: timestamp("next_check_at", { withTimezone: true }).notNull().defaultNow(),
+    sslExpiresAt: timestamp("ssl_expires_at", { withTimezone: true }),
+    sslCheckedAt: timestamp("ssl_checked_at", { withTimezone: true }),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // The worker polls `enabled AND next_check_at <= now()` every 10s.
+  (t) => [index("monitors_due_idx").on(t.nextCheckAt).where(sql`${t.enabled}`)],
+);
 
 export const checks = pgTable(
   "checks",
@@ -150,7 +157,11 @@ export const incidents = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     reason: text("reason"),
   },
-  (t) => [index("incidents_monitor_started_at_idx").on(t.monitorId, t.startedAt)],
+  (t) => [
+    index("incidents_monitor_started_at_idx").on(t.monitorId, t.startedAt),
+    // At most one open incident per monitor (guards against duplicates after pause/resume).
+    uniqueIndex("incidents_one_open_per_monitor").on(t.monitorId).where(sql`${t.resolvedAt} is null`),
+  ],
 );
 
 export const alertChannels = pgTable("alert_channels", {

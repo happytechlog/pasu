@@ -3,7 +3,16 @@ import { getSessionCookie } from "better-auth/cookies";
 
 // Optimistic check only (cookie presence). Pages and actions verify the
 // session for real via src/server/session.ts.
-const PUBLIC_PREFIXES = ["/login", "/setup", "/invite", "/status", "/api/auth", "/api/health"];
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/setup",
+  "/invite",
+  "/status",
+  "/api/auth",
+  "/api/health",
+  // Dev-only check targets for the worker (the routes return 404 in production).
+  ...(process.env.NODE_ENV === "production" ? [] : ["/api/test"]),
+];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
