@@ -109,6 +109,9 @@ export const monitors = pgTable("monitors", {
   method: httpMethod("method").notNull().default("GET"),
   intervalSec: integer("interval_sec").notNull().default(60), // 60 or 300
   timeoutMs: integer("timeout_ms").notNull().default(10000),
+  // Comma-separated codes or classes, e.g. "2xx" or "200,301,4xx".
+  // Parsed by src/lib/monitor/expected-status.ts.
+  expectedStatus: text("expected_status").notNull().default("2xx"),
   enabled: boolean("enabled").notNull().default(true),
   status: monitorStatus("status").notNull().default("pending"),
   consecutiveFailures: integer("consecutive_failures").notNull().default(0),

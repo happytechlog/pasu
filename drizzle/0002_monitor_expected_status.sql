@@ -1,0 +1,1 @@
+ALTER TABLE "monitors" ADD COLUMN "expected_status" text DEFAULT '2xx' NOT NULL;

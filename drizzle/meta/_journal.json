@@ -15,6 +15,13 @@
       "when": 1793482169154,
       "tag": "0001_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793485409669,
+      "tag": "0002_monitor_expected_status",
+      "breakpoints": true
     }
   ]
 }
