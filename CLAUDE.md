@@ -42,7 +42,12 @@ npm run db:studio
 - **웹(Next.js)과 워커(`worker/index.ts`, 상시 실행 Node 프로세스, tsx로 실행)가 분리**되어 있고 같은 Postgres를 공유한다. 주기적 체크는 서버리스 크론이 아니라 워커가 한다. 워커는 `dotenv/config`로 `.env`를 직접 읽는다.
 - 웹과 워커가 함께 쓰는 코드는 `src/lib/` 아래에 둔다. 이 코드는 Next 전용 API(`next/*`, React)에 의존하지 않아야 워커에서도 돌아간다.
   - `src/lib/db/`: Drizzle 클라이언트(개발 중 핫리로드를 위해 pg Pool을 `globalThis`에 캐시)와 스키마
+  - `src/lib/mail.ts`: nodemailer 발송(초대 메일, 이후 이메일 알림)
   - 이후 단계: `src/lib/monitor/`(체크·판정·SSL, 단위 테스트 대상), `src/lib/notify/`(slack/email, 웹의 "테스트 발송"에서도 사용)
+- 웹 전용 서버 코드는 `src/server/`(`import "server-only"`)에 둔다. `auth.ts`(Better Auth 설정), `session.ts`(DAL: `getCurrentUser`/`requireUser`/`requireAdmin`), `invitations.ts`
+- 인증 구조: `src/proxy.ts`(Next 16에서 middleware가 proxy로 이름이 바뀜)는 쿠키 유무만 보는 낙관적 검사다. **실제 권한 검사는 모든 페이지(Suspense 안)와 Server Action에서 `requireUser()`/`requireAdmin()`으로 다시 한다.** 공개 경로 목록은 `proxy.ts`의 `PUBLIC_PREFIXES`
+  - 공개 가입은 `disabledPaths: ["/sign-up/email"]`로 막고, 계정은 서버에서 `auth.api.signUpEmail`로만 만든다(`/setup`, `/invite/[token]`). `role`은 `input: false`라 가입 후 DB에서 직접 설정한다.
+  - 라우트 그룹: `(app)`은 헤더가 있는 로그인 영역, `(auth)`는 로그인·설정·초대 화면. 폼은 `ActionForm`(`useActionState`) + Server Action. 캐시를 쓰지 않으므로 액션 후 갱신은 `refresh()`(`next/cache`)
 - 워커 설계(4단계 이후): 10초마다 `nextCheckAt <= now AND enabled`인 모니터를 조회하고, 동시성 20으로 fetch(AbortController 타임아웃)를 실행한다. 결과는 `checks`에 저장한다. **연속 2회 실패 시 down, 1회 성공 시 up.** 상태가 바뀔 때만 `incidents`를 열거나 닫고 알림을 보낸다. SSL은 하루 1회 `tls.connect`로 확인하고, 14/7/1일 전에 한 번씩 알린다. 보관 기간(`CHECK_RETENTION_DAYS`, 기본 30일)이 지난 `checks`는 하루 1회 삭제한다.
 
 ## 확정된 제품 결정

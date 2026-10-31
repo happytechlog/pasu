@@ -5,7 +5,7 @@ UptimeRobot과 비슷한 웹사이트 가동 모니터링. 여러 사이트를 1
 
 ## 단계 (단계마다 실행 확인 → 커밋 → HANDOFF 갱신)
 - [x] **1. 뼈대**: Next.js 16, Tailwind/shadcn, compose(postgres, mailpit), Drizzle, 핵심 테이블, `/api/health`, 워커 스텁
-- [ ] **2. 인증**: Better Auth(이메일+비밀번호), auth 테이블과 `user.role`(admin|member), `/setup`(사용자 0명일 때만 첫 관리자 생성), `/login`, 초대(`invitations` 테이블, `/invite/[token]`, 7일 유효, 초대 메일 발송), 공개 가입 비활성화, 경로 보호, `/settings/users`(관리자 전용), `monitors.createdBy` FK
+- [x] **2. 인증**: Better Auth(이메일+비밀번호), auth 테이블과 `user.role`(admin|member), `/setup`(사용자 0명일 때만 첫 관리자 생성), `/login`, 초대(`invitations` 테이블, `/invite/[token]`, 7일 유효, 초대 메일 발송), 공개 가입 비활성화, 경로 보호, `/settings/users`(관리자 전용: 초대·취소·권한 변경·삭제), `monitors.createdBy` FK
 - [ ] **3. 모니터 CRUD**: 추가/수정/삭제/일시정지. 필드는 이름, URL, 간격(1분/5분), 고급 설정(메서드 GET/HEAD, 타임아웃, 기대 상태코드 2xx), 알림 채널 선택
 - [ ] **4. 워커**: 체크 루프, `checks` 저장, 상태 판정(연속 2회 실패 시 down), `incidents`. 판정 로직은 Vitest로 테스트
 - [ ] **5. 대시보드**: 목록(상태 배지, 응답시간, 24h 가동률, 최근 체크 히트바, SSL 남은 일수), 상세(응답시간 차트 24h/7d/30d, 가동률, 장애 이력), 30초 폴링
