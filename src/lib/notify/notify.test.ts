@@ -26,6 +26,17 @@ describe("formatAlert", () => {
     expect(formatAlert({ kind: "recovered", monitor, downtimeMs: 0, at }).subject).toBe("[UP] API 서버 복구");
   });
 
+  it("ssl: days left, expiring within a day, expired; KST date", () => {
+    const expiresAt = new Date("2026-11-06T20:00:00Z"); // 2026-11-07 05:00 KST
+    const soon = formatAlert({ kind: "ssl", monitor, expiresAt, daysLeft: 7, at }, "http://localhost:3000");
+    expect(soon.subject).toBe("[SSL] API 서버 인증서 만료 예정");
+    expect(soon.text).toBe("⚠️ [SSL] API 서버 — 인증서가 7일 후 만료됩니다 (2026-11-07)\nhttp://localhost:3000/monitors/m1");
+    expect(formatAlert({ kind: "ssl", monitor, expiresAt, daysLeft: 0, at }).text).toContain("24시간 안에 만료됩니다");
+    const expired = formatAlert({ kind: "ssl", monitor, expiresAt, daysLeft: -3, at });
+    expect(expired.subject).toBe("[SSL] API 서버 인증서 만료됨");
+    expect(expired.text).toBe("⚠️ [SSL] API 서버 — 인증서가 만료되었습니다 (2026-11-07)");
+  });
+
   it("test message names the channel", () => {
     expect(formatAlert({ kind: "test", channelName: "운영팀", at }).text).toContain("'운영팀' 채널");
   });

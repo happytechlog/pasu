@@ -185,3 +185,19 @@ export const monitorAlertChannels = pgTable(
   },
   (t) => [primaryKey({ columns: [t.monitorId, t.channelId] })],
 );
+
+// One row per SSL expiry alert sent. Keyed by the certificate's expiry date,
+// so a renewed certificate (new expiry) can be alerted on again.
+export const sslAlertsSent = pgTable(
+  "ssl_alerts_sent",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    monitorId: uuid("monitor_id")
+      .notNull()
+      .references(() => monitors.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    thresholdDays: integer("threshold_days").notNull(), // 14, 7 or 1
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ssl_alerts_sent_unique").on(t.monitorId, t.expiresAt, t.thresholdDays)],
+);

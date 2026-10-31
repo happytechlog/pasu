@@ -1,7 +1,8 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { checks, incidents, monitors } from "../db/schema";
+import { checks, incidents, monitors, sslAlertsSent } from "../db/schema";
 import type { CheckResult } from "./check";
+import { SSL_CHECK_INTERVAL_MS, SSL_RETRY_AFTER_MS } from "./ssl";
 import { nextState, type TransitionResult } from "./state";
 
 // DB side of the worker. Shared lib code: no Next/React imports.
@@ -105,6 +106,64 @@ export async function recordResult(monitorId: string, result: CheckResult, check
     }
     return { skipped: false, incidentStartedAt, ...t, event };
   });
+}
+
+// ---------------------------------------------------------------------------
+// SSL (once a day per enabled https monitor)
+// ---------------------------------------------------------------------------
+
+export type SslDueMonitor = { id: string; name: string; url: string };
+
+/**
+ * Claims enabled https monitors whose certificate hasn't been read in the last
+ * day, stamping sslCheckedAt so other ticks/workers skip them.
+ */
+export async function claimSslDue(limit: number): Promise<SslDueMonitor[]> {
+  const { rows } = await db.execute<SslDueMonitor>(sql`
+    update ${monitors} m
+       set ssl_checked_at = now()
+     where m.id in (
+       select id from ${monitors}
+        where enabled
+          and url ilike 'https://%'
+          and (ssl_checked_at is null or ssl_checked_at <= now() - make_interval(secs => ${SSL_CHECK_INTERVAL_MS / 1000}))
+        order by ssl_checked_at nulls first
+        limit ${limit}
+        for update skip locked
+     )
+    returning m.id, m.name, m.url
+  `);
+  return rows;
+}
+
+/** Stores the certificate expiry read from the server. */
+export async function saveSslExpiry(monitorId: string, expiresAt: Date): Promise<void> {
+  await db.update(monitors).set({ sslExpiresAt: expiresAt }).where(eq(monitors.id, monitorId));
+}
+
+/**
+ * The lookup failed: keep the last known expiry and back-date sslCheckedAt so
+ * the monitor is retried in about an hour instead of a day.
+ */
+export async function markSslRetry(monitorId: string): Promise<void> {
+  const backdateSec = (SSL_CHECK_INTERVAL_MS - SSL_RETRY_AFTER_MS) / 1000;
+  await db
+    .update(monitors)
+    .set({ sslCheckedAt: sql`now() - make_interval(secs => ${backdateSec})` })
+    .where(eq(monitors.id, monitorId));
+}
+
+/**
+ * Records that the alert for (monitor, certificate expiry, threshold) is being
+ * sent. Returns false if it was already sent, so each fires at most once.
+ */
+export async function claimSslAlert(monitorId: string, expiresAt: Date, thresholdDays: number): Promise<boolean> {
+  const inserted = await db
+    .insert(sslAlertsSent)
+    .values({ monitorId, expiresAt, thresholdDays })
+    .onConflictDoNothing()
+    .returning({ id: sslAlertsSent.id });
+  return inserted.length > 0;
 }
 
 /** Runs `fn` over `items` with at most `limit` in flight. */

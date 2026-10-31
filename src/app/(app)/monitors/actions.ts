@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, inArray, not } from "drizzle-orm";
+import { eq, inArray, not, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { alertChannels, monitorAlertChannels, monitors } from "@/lib/db/schema";
@@ -73,7 +73,14 @@ export async function updateMonitorAction(
     // Check again soon so changed settings take effect without waiting a full interval.
     const updated = await tx
       .update(monitors)
-      .set({ ...columns(r.data), nextCheckAt: new Date() })
+      .set({
+        ...columns(r.data),
+        nextCheckAt: new Date(),
+        // A different URL may mean a different certificate (or none): forget
+        // the old one so the worker reads it again on its next SSL pass.
+        sslExpiresAt: sql`case when ${monitors.url} = ${r.data.url} then ${monitors.sslExpiresAt} end`,
+        sslCheckedAt: sql`case when ${monitors.url} = ${r.data.url} then ${monitors.sslCheckedAt} end`,
+      })
       .where(eq(monitors.id, monitorId))
       .returning({ id: monitors.id });
     if (updated.length === 0) return false;

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { alertChannels, monitorAlertChannels } from "../db/schema";
 import { sendMail } from "../mail";
-import { formatAlert, type AlertEvent, type AlertMessage } from "./message";
+import { formatAlert, type AlertMessage, type MonitorAlertEvent } from "./message";
 
 // Sending alerts. Shared lib code (worker + web "테스트 발송"): no Next/React imports.
 
@@ -62,8 +62,8 @@ export async function channelsForMonitor(monitorId: string): Promise<Channel[]> 
     .where(and(eq(monitorAlertChannels.monitorId, monitorId), eq(alertChannels.enabled, true)));
 }
 
-/** Sends a down/recovered alert to the monitor's enabled channels. Never throws. */
-export async function notifyMonitorEvent(event: Exclude<AlertEvent, { kind: "test" }>): Promise<SendResult[]> {
+/** Sends a down/recovered/ssl alert to the monitor's enabled channels. Never throws. */
+export async function notifyMonitorEvent(event: MonitorAlertEvent): Promise<SendResult[]> {
   let channels: Channel[];
   try {
     channels = await channelsForMonitor(event.monitor.id);
