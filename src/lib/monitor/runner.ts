@@ -183,6 +183,31 @@ export async function claimSslAlert(monitorId: string, expiresAt: Date, threshol
   return inserted.length > 0;
 }
 
+// ---------------------------------------------------------------------------
+// Retention
+// ---------------------------------------------------------------------------
+
+/**
+ * Deletes checks older than `retentionDays`, `batchSize` rows per statement so
+ * no single delete holds locks for long. Daily stats (monitor_daily_stats)
+ * are not touched. Returns the number of rows deleted.
+ */
+export async function purgeOldChecks(retentionDays: number, batchSize = 5000): Promise<number> {
+  let deleted = 0;
+  for (;;) {
+    const { rowCount } = await db.execute(sql`
+      delete from ${checks}
+       where id in (
+         select id from ${checks}
+          where checked_at < now() - make_interval(days => ${retentionDays})
+          limit ${batchSize}
+       )
+    `);
+    deleted += rowCount ?? 0;
+    if (!rowCount || rowCount < batchSize) return deleted;
+  }
+}
+
 /** Runs `fn` over `items` with at most `limit` in flight. */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);

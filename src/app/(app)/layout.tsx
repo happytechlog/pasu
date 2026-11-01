@@ -41,9 +41,14 @@ async function UserNav() {
           알림채널
         </Link>
         {user.role === "admin" && (
-          <Link href="/settings/users" className="hover:text-foreground">
-            사용자
-          </Link>
+          <>
+            <Link href="/settings/users" className="hover:text-foreground">
+              사용자
+            </Link>
+            <Link href="/settings/general" className="hover:text-foreground">
+              설정
+            </Link>
+          </>
         )}
       </nav>
       <div className="flex items-center gap-3 text-sm">

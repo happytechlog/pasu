@@ -8,6 +8,7 @@ import {
   claimSslDue,
   mapLimit,
   markSslRetry,
+  purgeOldChecks,
   recordResult,
   saveSslExpiry,
   type DueMonitor,
@@ -17,6 +18,7 @@ import {
 import { describeSslError, fetchCertExpiry, sslAlertThreshold } from "../src/lib/monitor/ssl";
 import { formatDuration, sslDaysLeft } from "../src/lib/monitor/stats";
 import { notifyMonitorEvent, type SendResult } from "../src/lib/notify";
+import { getSettings } from "../src/lib/settings";
 
 const TICK_MS = 10_000;
 const CONCURRENCY = 20;
@@ -25,6 +27,9 @@ const SSL_TICK_MS = 60_000;
 const SSL_CONCURRENCY = 5;
 const SSL_CLAIM_LIMIT = 50;
 const SSL_TIMEOUT_MS = 10_000;
+// Retention is read from app_settings on every run, so a change made in
+// /settings/general takes effect within an hour.
+const PURGE_EVERY_MS = 60 * 60_000;
 
 const log = (...args: unknown[]) => console.log(new Date().toISOString(), "[worker]", ...args);
 
@@ -124,6 +129,24 @@ async function sslTick() {
   }
 }
 
+let purging: Promise<void> | null = null;
+
+async function purge() {
+  if (purging || stopping) return;
+  purging = (async () => {
+    try {
+      const { checkRetentionDays } = await getSettings();
+      const started = Date.now();
+      const n = await purgeOldChecks(checkRetentionDays);
+      if (n > 0) log(`purged ${n} check(s) older than ${checkRetentionDays}d in ${Date.now() - started}ms`);
+    } catch (err) {
+      log("purge failed:", err);
+    } finally {
+      purging = null;
+    }
+  })();
+}
+
 async function main() {
   await db.execute(sql`select 1`);
   log(`started: tick ${TICK_MS / 1000}s, concurrency ${CONCURRENCY}; ssl every ${SSL_TICK_MS / 1000}s`);
@@ -138,6 +161,8 @@ async function main() {
   };
   runSsl();
   const sslTimer = setInterval(runSsl, SSL_TICK_MS);
+  void purge();
+  const purgeTimer = setInterval(() => void purge(), PURGE_EVERY_MS);
 
   const shutdown = async (signal: string) => {
     if (stopping) return;
@@ -145,7 +170,8 @@ async function main() {
     log(`${signal} received, finishing in-flight checks…`);
     clearInterval(timer);
     clearInterval(sslTimer);
-    await Promise.all([inFlight, sslInFlight]);
+    clearInterval(purgeTimer);
+    await Promise.all([inFlight, sslInFlight, purging]);
     await pool.end();
     log("stopped");
     process.exit(0);

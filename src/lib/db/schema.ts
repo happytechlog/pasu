@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -144,7 +145,11 @@ export const checks = pgTable(
     responseTimeMs: integer("response_time_ms"),
     error: text("error"),
   },
-  (t) => [index("checks_monitor_checked_at_idx").on(t.monitorId, t.checkedAt)],
+  (t) => [
+    index("checks_monitor_checked_at_idx").on(t.monitorId, t.checkedAt),
+    // Retention purge deletes by age across all monitors.
+    index("checks_checked_at_idx").on(t.checkedAt),
+  ],
 );
 
 export const incidents = pgTable(
@@ -238,4 +243,16 @@ export const statusPageMonitors = pgTable(
       .references(() => monitors.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.statusPageId, t.monitorId] })],
+);
+
+// Team-wide settings edited by admins at /settings/general. Exactly one row
+// (id = 1); read through src/lib/settings.ts, which falls back to defaults.
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    checkRetentionDays: integer("check_retention_days").notNull().default(30),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("app_settings_single_row", sql`${t.id} = 1`)],
 );
