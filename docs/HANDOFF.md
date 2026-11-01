@@ -12,8 +12,7 @@ _마지막 갱신: 2026-11-01 · 9단계(정리: Docker/compose) 완료. PLAN의
 - PLAN 단계는 모두 끝났다. 다음은 `PLAN.md`의 "보류·나중에 정할 것"(배포 위치, webhook 암호화, 키워드 체크, 점검 시간) 중에서 사용자와 고른다.
 
 ## 미해결·결정 필요
-- 컨테이너 워커 안에서 `localhost`는 워커 자신이다. "실패 테스트" 모니터(`http://localhost:3000/api/health`)는 Docker로 돌리면 down이 된다(dev로 돌아오면 복구).
-- 외부 공개 배포 시 HTTPS 리버스 프록시, `BETTER_AUTH_URL` 실제 주소, Postgres 비밀번호 변경(compose에 `monitor/monitor` 하드코딩)이 필요하다.
+- "실패 테스트" 모니터(`http://localhost:3000/api/health`)는 Docker로 돌리면 down이 된다(dev로 돌아오면 복구). 이유와 외부 공개 시 할 일은 README의 Docker 섹션에 있다.
 - 기존: 보관 기간 30일 미만이면 30일 차트에 빈 구간이 생긴다. `monitor_daily_stats`는 계속 쌓인다. 없는 slug는 HTTP 200. 알림 재시도 없음. 채널 수정 화면·비밀번호 재설정 없음. 실제 Slack 발송 미확인.
 
 ## 알아둘 것
