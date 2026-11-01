@@ -29,6 +29,8 @@ npx vitest run path/to/file.test.ts -t "test name"   # 단일 테스트
 npm run db:generate           # schema.ts 변경 → drizzle/ 에 SQL 마이그레이션 생성 (생성 파일도 커밋)
 npm run db:migrate            # 마이그레이션 적용
 npm run db:studio
+npm run worker:build          # esbuild로 dist/worker/{index,migrate}.mjs 번들 (Docker worker 이미지용)
+docker compose --profile app up -d --build --wait   # 전체 스택: migrate(1회) → web(:3000) + worker. 로컬 dev 서버/워커와 동시에 띄우지 않는다
 ```
 
 ## Next.js 16 주의사항
@@ -48,6 +50,7 @@ npm run db:studio
   - `src/lib/settings.ts`: 팀 전체 설정(`app_settings` 한 행, id=1). `getSettings`(행이 없으면 기본값), `saveSettings`, 폼 zod. 지금은 체크 보관 기간(기본 30일, 7~365일)만 있다
   - `src/lib/status-page/input.ts`: 상태 페이지 폼 zod(slug는 영문 소문자·숫자·하이픈 1~40자)
   - `src/lib/notify/`: `message.ts`(알림 문구, 마스킹, 순수), `input.ts`(채널 폼 zod), `index.ts`(Slack/이메일 발송, 모니터별 활성 채널 조회). 워커는 결과 트랜잭션이 커밋된 뒤 `notifyMonitorEvent`로 보내고, 웹의 "테스트 발송"은 `sendToChannel`을 쓴다. 발송 함수는 채널별 결과를 돌려주고 throw하지 않는다
+- 배포: `Dockerfile` 하나에 타깃 두 개. `web`은 `output: "standalone"`의 `server.js`, `worker`는 esbuild 단일 번들(node_modules 없음)이라 **워커가 import하는 코드는 번들 가능해야 한다**(동적 require·네이티브 모듈 금지, `pg-native`만 external). 마이그레이션은 `worker/migrate.ts`(drizzle-orm migrator, drizzle-kit과 같은 journal 테이블)를 compose의 1회성 `migrate` 서비스가 실행하고 web/worker는 그 완료를 기다린다. compose에서 app 서비스는 `app` 프로필이라 기본 `up`은 db+mailpit만 띄운다. 컨테이너에선 `DATABASE_URL`/`SMTP_HOST`를 compose가 덮어쓴다
 - 웹 전용 서버 코드는 `src/server/`(`import "server-only"`)에 둔다. `auth.ts`(Better Auth 설정), `session.ts`(DAL: `getCurrentUser`/`requireUser`/`requireAdmin`), `invitations.ts`, `dashboard.ts`(대시보드 조회 쿼리), `status-pages.ts`(상태 페이지 조회. 공개용 `getPublicStatusPage`는 모니터 이름·상태·일별 집계만 select한다)
 - 대시보드: 가동률은 **기간 내 ok 체크 / 전체 체크**(체크 0건이면 "—"). 차트는 SQL `date_bin`으로 버킷 집계(24h=15분, 7d=1시간, 30d=6시간, KST 자정 기준 정렬)하고 빈 버킷은 `fillBuckets`로 채운다. 차트는 라이브러리 없이 SVG(`monitors/[id]/response-chart.tsx`). 상태 색은 `globals.css`의 `--status-up/down/empty`, `--series-1` 토큰. 30초 갱신은 `src/components/auto-refresh.tsx`(`router.refresh()`, 탭이 숨겨지면 건너뜀)
 - 인증 구조: `src/proxy.ts`(Next 16에서 middleware가 proxy로 이름이 바뀜)는 쿠키 유무만 보는 낙관적 검사다. **실제 권한 검사는 모든 페이지(Suspense 안)와 Server Action에서 `requireUser()`/`requireAdmin()`으로 다시 한다.** 공개 경로 목록은 `proxy.ts`의 `PUBLIC_PREFIXES`
