@@ -45,18 +45,19 @@ npm run db:studio
   - `src/lib/db/`: Drizzle 클라이언트(개발 중 핫리로드를 위해 pg Pool을 `globalThis`에 캐시)와 스키마
   - `src/lib/mail.ts`: nodemailer 발송(초대 메일, 이후 이메일 알림)
   - `src/lib/monitor/`: `check.ts`(HTTP 체크, 순수), `state.ts`(상태 전이, 순수), `runner.ts`(워커의 DB 처리: 대상 선점·결과 기록·incident), `expected-status.ts`, `input.ts`(폼 zod 스키마), `stats.ts`(가동률·차트 버킷·SSL 일수·기간 포맷, 순수), `ssl.ts`(알림 임계값 판정·`tls.connect` 만료일 조회). 순수 함수는 단위 테스트한다
+  - `src/lib/status-page/input.ts`: 상태 페이지 폼 zod(slug는 영문 소문자·숫자·하이픈 1~40자)
   - `src/lib/notify/`: `message.ts`(알림 문구, 마스킹, 순수), `input.ts`(채널 폼 zod), `index.ts`(Slack/이메일 발송, 모니터별 활성 채널 조회). 워커는 결과 트랜잭션이 커밋된 뒤 `notifyMonitorEvent`로 보내고, 웹의 "테스트 발송"은 `sendToChannel`을 쓴다. 발송 함수는 채널별 결과를 돌려주고 throw하지 않는다
-- 웹 전용 서버 코드는 `src/server/`(`import "server-only"`)에 둔다. `auth.ts`(Better Auth 설정), `session.ts`(DAL: `getCurrentUser`/`requireUser`/`requireAdmin`), `invitations.ts`, `dashboard.ts`(대시보드 조회 쿼리)
+- 웹 전용 서버 코드는 `src/server/`(`import "server-only"`)에 둔다. `auth.ts`(Better Auth 설정), `session.ts`(DAL: `getCurrentUser`/`requireUser`/`requireAdmin`), `invitations.ts`, `dashboard.ts`(대시보드 조회 쿼리), `status-pages.ts`(상태 페이지 조회. 공개용 `getPublicStatusPage`는 모니터 이름·상태·일별 집계만 select한다)
 - 대시보드: 가동률은 **기간 내 ok 체크 / 전체 체크**(체크 0건이면 "—"). 차트는 SQL `date_bin`으로 버킷 집계(24h=15분, 7d=1시간, 30d=6시간, KST 자정 기준 정렬)하고 빈 버킷은 `fillBuckets`로 채운다. 차트는 라이브러리 없이 SVG(`monitors/[id]/response-chart.tsx`). 상태 색은 `globals.css`의 `--status-up/down/empty`, `--series-1` 토큰. 30초 갱신은 `src/components/auto-refresh.tsx`(`router.refresh()`, 탭이 숨겨지면 건너뜀)
 - 인증 구조: `src/proxy.ts`(Next 16에서 middleware가 proxy로 이름이 바뀜)는 쿠키 유무만 보는 낙관적 검사다. **실제 권한 검사는 모든 페이지(Suspense 안)와 Server Action에서 `requireUser()`/`requireAdmin()`으로 다시 한다.** 공개 경로 목록은 `proxy.ts`의 `PUBLIC_PREFIXES`
   - 공개 가입은 `disabledPaths: ["/sign-up/email"]`로 막고, 계정은 서버에서 `auth.api.signUpEmail`로만 만든다(`/setup`, `/invite/[token]`). `role`은 `input: false`라 가입 후 DB에서 직접 설정한다.
   - 라우트 그룹: `(app)`은 헤더가 있는 로그인 영역, `(auth)`는 로그인·설정·초대 화면. 폼은 `ActionForm`(`useActionState`) + Server Action. 캐시를 쓰지 않으므로 액션 후 갱신은 `refresh()`(`next/cache`)
   - **클라이언트 컴포넌트에서 Server Action 모듈(`actions.ts`)을 직접 import하지 않는다.** 서버 컴포넌트에서 prop으로 넘긴다(타입만 `import type`). 직접 import했을 때 dev(Turbopack)에서 페이지가 1초마다 전체 새로고침되는 루프가 생겼다
-- 워커: 10초마다 `nextCheckAt <= now AND enabled`인 모니터를 `FOR UPDATE SKIP LOCKED`로 선점하면서 `nextCheckAt`을 한 간격 뒤로 미룬다. 동시성 20으로 fetch(AbortController 타임아웃)를 실행하고, 결과는 행 잠금 트랜잭션 안에서 `checks`에 저장한다. **연속 2회 실패 시 down, 1회 성공 시 up.** 상태가 바뀔 때만 `incidents`를 열거나 닫고 알림을 보낸다(열린 incident는 모니터당 1건, 부분 유니크 인덱스). SSL은 별도 60초 루프가 24시간 안에 확인하지 않은 https 모니터를 `ssl_checked_at` 갱신으로 선점해 `tls.connect`(검증 끔, 만료된 인증서도 읽기 위해)로 만료일을 읽는다. 실패하면 약 1시간 뒤 재시도. 14/7/1일 전에 한 번씩 알리며 `ssl_alerts_sent`(모니터·만료일·임계값 유니크)에 먼저 넣고 성공한 경우에만 보낸다(인증서 갱신 → 만료일이 바뀌어 다시 알림). 보관 기간(`CHECK_RETENTION_DAYS`, 기본 30일)이 지난 `checks`는 하루 1회 삭제한다.
+- 워커: 10초마다 `nextCheckAt <= now AND enabled`인 모니터를 `FOR UPDATE SKIP LOCKED`로 선점하면서 `nextCheckAt`을 한 간격 뒤로 미룬다. 동시성 20으로 fetch(AbortController 타임아웃)를 실행하고, 결과는 행 잠금 트랜잭션 안에서 `checks`에 저장하고, 같은 트랜잭션에서 `monitor_daily_stats`(모니터·KST 날짜별 전체/성공 체크 수)를 upsert로 올린다. 공개 상태 페이지의 90일 막대는 이 테이블을 읽으므로 `checks` 보관 기간과 무관하다. **연속 2회 실패 시 down, 1회 성공 시 up.** 상태가 바뀔 때만 `incidents`를 열거나 닫고 알림을 보낸다(열린 incident는 모니터당 1건, 부분 유니크 인덱스). SSL은 별도 60초 루프가 24시간 안에 확인하지 않은 https 모니터를 `ssl_checked_at` 갱신으로 선점해 `tls.connect`(검증 끔, 만료된 인증서도 읽기 위해)로 만료일을 읽는다. 실패하면 약 1시간 뒤 재시도. 14/7/1일 전에 한 번씩 알리며 `ssl_alerts_sent`(모니터·만료일·임계값 유니크)에 먼저 넣고 성공한 경우에만 보낸다(인증서 갱신 → 만료일이 바뀌어 다시 알림). 보관 기간(`CHECK_RETENTION_DAYS`, 기본 30일)이 지난 `checks`는 하루 1회 삭제한다.
 
 ## 확정된 제품 결정
 - 공개 가입 없음. 사용자가 0명일 때 `/setup`에서 첫 관리자를 만들고, 이후에는 관리자가 보낸 초대 링크(`/invite/[token]`, 7일 유효)로만 가입한다. 인증은 Better Auth(이메일+비밀번호)이고, auth 테이블은 2단계에서 추가한다. 그때 `monitors.createdBy`에 user FK를 연결한다.
 - **팀 전체 공유**: 모니터와 알림 채널에 사용자별 소유 구분이 없다.
-- 보호 경로: `/status/*`, `/login`, `/setup`, `/invite/*`를 뺀 모든 경로. 공개 상태 페이지에는 URL과 에러 상세를 노출하지 않는다.
+- 보호 경로: `/status/*`, `/login`, `/setup`, `/invite/*`를 뺀 모든 경로. 공개 상태 페이지에는 URL과 에러 상세를 노출하지 않는다. 공개 페이지(`src/app/status/[slug]`, 라우트 그룹 밖이라 헤더 없음)는 조회 쿼리에서 그런 컬럼을 아예 select하지 않는 방식으로 지킨다.
 - 설정값 위치: SMTP 서버, DB, 인증 시크릿은 `.env`(`.env.example`만 커밋). 수신 이메일과 Slack webhook URL은 대시보드에서 관리하며 DB(`alert_channels`)에 저장한다. webhook URL은 화면에서 끝 4자리만 보이게 마스킹한다.
 - 대시보드 갱신은 30초 폴링이다. 웹소켓은 쓰지 않는다. UI 문구는 한국어로 쓴다.
