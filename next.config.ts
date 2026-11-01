@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // .next/standalone (server.js + traced node_modules) is what the Docker web image runs.
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

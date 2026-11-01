@@ -1,3 +1,18 @@
+# Development:  docker compose up -d --wait            → db + mailpit only (run web/worker with npm)
+# Full stack:   docker compose --profile app up -d --build --wait
+#               → also migrate (one-shot) → web (http://localhost:3000) + worker
+# The app services read BETTER_AUTH_SECRET etc. from .env via interpolation;
+# DATABASE_URL and SMTP_HOST are overridden to point at the compose services.
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://monitor:monitor@db:5432/monitor
+  SMTP_HOST: ${COMPOSE_SMTP_HOST:-mailpit}
+  SMTP_PORT: ${COMPOSE_SMTP_PORT:-1025}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:-Uptime Monitor <alerts@localhost>}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+
 services:
   db:
     image: postgres:17-alpine
@@ -22,6 +37,38 @@ services:
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
+
+  migrate:
+    profiles: [app]
+    build: { context: ., target: worker }
+    image: simple-monitoring-worker
+    command: ["node", "migrate.mjs"]
+    environment: *app-env
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    profiles: [app]
+    build: { context: ., target: web }
+    image: simple-monitoring-web
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    profiles: [app]
+    image: simple-monitoring-worker
+    restart: unless-stopped
+    environment: *app-env
+    stop_grace_period: 30s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mailpit: { condition: service_started }
 
 volumes:
   pgdata:
