@@ -34,6 +34,9 @@ async function UserNav() {
         <Link href="/" className="hover:text-foreground">
           모니터
         </Link>
+        <Link href="/settings/status-pages" className="hover:text-foreground">
+          상태페이지
+        </Link>
         <Link href="/settings/alerts" className="hover:text-foreground">
           알림채널
         </Link>

@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { checks, incidents, monitors, sslAlertsSent } from "../db/schema";
+import { checks, incidents, monitorDailyStats, monitors, sslAlertsSent } from "../db/schema";
 import type { CheckResult } from "./check";
 import { SSL_CHECK_INTERVAL_MS, SSL_RETRY_AFTER_MS } from "./ssl";
 import { nextState, type TransitionResult } from "./state";
@@ -77,6 +77,23 @@ export async function recordResult(monitorId: string, result: CheckResult, check
       responseTimeMs: result.responseTimeMs,
       error: result.error,
     });
+    // Daily counts (KST day) for the status pages' 90-day bars; kept beyond checks retention.
+    const okInc = result.ok ? 1 : 0;
+    await tx
+      .insert(monitorDailyStats)
+      .values({
+        monitorId,
+        day: sql`(${checkedAt.toISOString()}::timestamptz at time zone 'Asia/Seoul')::date`,
+        totalChecks: 1,
+        okChecks: okInc,
+      })
+      .onConflictDoUpdate({
+        target: [monitorDailyStats.monitorId, monitorDailyStats.day],
+        set: {
+          totalChecks: sql`${monitorDailyStats.totalChecks} + 1`,
+          okChecks: sql`${monitorDailyStats.okChecks} + ${okInc}`,
+        },
+      });
 
     const t = nextState(m, result.ok);
     await tx

@@ -79,3 +79,45 @@ export function formatDuration(ms: number): string {
   if (h > 0) return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
   return `${m}분`;
 }
+
+// ---------------------------------------------------------------------------
+// Daily bars (public status pages). Days are KST calendar dates "YYYY-MM-DD".
+// ---------------------------------------------------------------------------
+
+export const STATUS_PAGE_DAYS = 90;
+
+const kstDayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** The KST calendar date of `t`, e.g. "2026-10-31". */
+export function kstDay(t: Date): string {
+  return kstDayFmt.format(t);
+}
+
+/** "2026-10-31" + 1 → "2026-11-01" (pure date arithmetic, no time zones involved). */
+export function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export type DayRow = { day: string; total: number; ok: number };
+
+/** `days` entries ending at `today`, oldest first; days without checks have total = 0. */
+export function fillDays(rows: DayRow[], today: string, days = STATUS_PAGE_DAYS): DayRow[] {
+  const byDay = new Map(rows.map((r) => [r.day, r]));
+  const out: DayRow[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = addDays(today, -i);
+    out.push(byDay.get(day) ?? { day, total: 0, ok: 0 });
+  }
+  return out;
+}
+
+export type DayLevel = "empty" | "up" | "partial" | "down";
+
+/** Bar color: no checks → empty, all ok → up, ≥ 99% → partial, below → down. */
+export function dayLevel(ok: number, total: number): DayLevel {
+  if (total <= 0) return "empty";
+  if (ok >= total) return "up";
+  return ok / total >= 0.99 ? "partial" : "down";
+}

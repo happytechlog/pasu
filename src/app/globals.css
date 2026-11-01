@@ -7,6 +7,7 @@
 @theme inline {
   --color-status-up: var(--status-up);
   --color-status-down: var(--status-down);
+  --color-status-partial: var(--status-partial);
   --color-status-empty: var(--status-empty);
   --color-series-1: var(--series-1);
   --color-background: var(--background);
@@ -79,6 +80,7 @@
   /* Dashboard: status colors (heat bar, badges) and response-time line */
   --status-up: #0ca30c;
   --status-down: #d03b3b;
+  --status-partial: #e0a020;
   --status-empty: oklch(0.922 0 0);
   --series-1: #2a78d6;
   --radius: 0.625rem;
@@ -118,6 +120,7 @@
   --chart-5: oklch(0.269 0 0);
   --status-up: #0ca30c;
   --status-down: #d03b3b;
+  --status-partial: #e0a020;
   --status-empty: oklch(0.3 0 0);
   --series-1: #3987e5;
   --sidebar: oklch(0.205 0 0);

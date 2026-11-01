@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  addDays,
   bucketStart,
+  dayLevel,
+  fillDays,
+  kstDay,
   fillBuckets,
   formatDuration,
   formatUptime,
@@ -79,5 +83,35 @@ describe("formatDuration", () => {
     expect(formatDuration(185 * 60_000)).toBe("3시간 5분");
     expect(formatDuration((2 * 1440 + 3 * 60 + 7) * 60_000)).toBe("2일 3시간");
     expect(formatDuration(1440 * 60_000)).toBe("1일");
+  });
+});
+
+describe("daily bars", () => {
+  it("kstDay uses the Seoul calendar date", () => {
+    expect(kstDay(new Date("2026-10-31T14:59:59Z"))).toBe("2026-10-31"); // 23:59 KST
+    expect(kstDay(new Date("2026-10-31T15:00:00Z"))).toBe("2026-11-01"); // 00:00 KST
+  });
+
+  it("addDays crosses month and year boundaries", () => {
+    expect(addDays("2026-10-31", 1)).toBe("2026-11-01");
+    expect(addDays("2026-01-01", -1)).toBe("2025-12-31");
+    expect(addDays("2026-03-01", -89)).toBe("2025-12-02");
+  });
+
+  it("fillDays returns N days ending today, oldest first, with gaps filled", () => {
+    const days = fillDays([{ day: "2026-10-30", total: 10, ok: 9 }, { day: "2026-01-01", total: 5, ok: 5 }], "2026-10-31", 3);
+    expect(days).toEqual([
+      { day: "2026-10-29", total: 0, ok: 0 },
+      { day: "2026-10-30", total: 10, ok: 9 },
+      { day: "2026-10-31", total: 0, ok: 0 },
+    ]);
+    expect(fillDays([], "2026-10-31")).toHaveLength(90);
+  });
+
+  it("dayLevel", () => {
+    expect(dayLevel(0, 0)).toBe("empty");
+    expect(dayLevel(1440, 1440)).toBe("up");
+    expect(dayLevel(1439, 1440)).toBe("partial");
+    expect(dayLevel(98, 100)).toBe("down");
   });
 });

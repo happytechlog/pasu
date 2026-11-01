@@ -36,6 +36,13 @@
       "when": 1793490412906,
       "tag": "0004_ssl_alerts_sent",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793491289586,
+      "tag": "0005_status_pages",
+      "breakpoints": true
     }
   ]
 }

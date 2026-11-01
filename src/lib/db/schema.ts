@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   pgEnum,
@@ -200,4 +201,41 @@ export const sslAlertsSent = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("ssl_alerts_sent_unique").on(t.monitorId, t.expiresAt, t.thresholdDays)],
+);
+
+// Per-monitor daily check counts (day = KST calendar date). Incremented in the
+// same transaction that stores each check, so it outlives `checks` retention
+// and backs the 90-day bars on public status pages.
+export const monitorDailyStats = pgTable(
+  "monitor_daily_stats",
+  {
+    monitorId: uuid("monitor_id")
+      .notNull()
+      .references(() => monitors.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    totalChecks: integer("total_checks").notNull().default(0),
+    okChecks: integer("ok_checks").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.monitorId, t.day] })],
+);
+
+// Public status pages (/status/[slug]), open without login.
+export const statusPages = pgTable("status_pages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const statusPageMonitors = pgTable(
+  "status_page_monitors",
+  {
+    statusPageId: uuid("status_page_id")
+      .notNull()
+      .references(() => statusPages.id, { onDelete: "cascade" }),
+    monitorId: uuid("monitor_id")
+      .notNull()
+      .references(() => monitors.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.statusPageId, t.monitorId] })],
 );
