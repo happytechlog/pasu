@@ -2,12 +2,13 @@
 # Full stack:   docker compose --profile app up -d --build --wait
 #               → also migrate (one-shot) → web (http://localhost:3000) + worker
 # The app services read BETTER_AUTH_SECRET etc. from .env via interpolation;
-# DATABASE_URL and SMTP_HOST are overridden to point at the compose services.
+# DATABASE_URL is overridden to point at the db service. SMTP_HOST/SMTP_PORT come from .env
+# (default: the mailpit service). Note: inside a container "localhost" is the container itself.
 
 x-app-env: &app-env
   DATABASE_URL: postgres://monitor:monitor@db:5432/monitor
-  SMTP_HOST: ${COMPOSE_SMTP_HOST:-mailpit}
-  SMTP_PORT: ${COMPOSE_SMTP_PORT:-1025}
+  SMTP_HOST: ${SMTP_HOST:-mailpit}
+  SMTP_PORT: ${SMTP_PORT:-1025}
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASS: ${SMTP_PASS:-}
   SMTP_FROM: ${SMTP_FROM:-Uptime Monitor <alerts@localhost>}

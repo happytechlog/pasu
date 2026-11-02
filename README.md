@@ -24,7 +24,7 @@ docker compose --profile app up -d --build --wait
 - 이미지는 `Dockerfile` 하나에서 타깃 두 개로 만든다.
   - `web`: Next.js standalone(`node server.js`). `/api/health`로 healthcheck한다.
   - `worker`: esbuild 번들(`node index.mjs`, node_modules 없음). 같은 이미지가 `node migrate.mjs`로 마이그레이션도 실행한다.
-- `.env`의 `DATABASE_URL`, `SMTP_HOST`/`SMTP_PORT`는 무시하고 compose 서비스(`db`, `mailpit`)를 쓴다. 실제 SMTP를 쓰려면 `.env`에 `COMPOSE_SMTP_HOST`, `COMPOSE_SMTP_PORT`를 넣는다.
+- `.env`의 `DATABASE_URL`은 무시하고 compose의 `db` 서비스를 쓴다. `SMTP_HOST`/`SMTP_PORT`는 `.env` 값을 그대로 쓰고, 비어 있으면 compose의 `mailpit`(1025)을 쓴다. 컨테이너 안에서 `localhost`는 컨테이너 자신이므로 Mailpit으로 보내려면 `SMTP_HOST=mailpit`으로 쓰거나 줄을 지운다.
 - 컨테이너 워커 안에서 `localhost`는 워커 자신이다. `http://localhost:3000/...`처럼 호스트 PC를 가리키는 모니터는 Docker 스택에서 down이 된다. 같은 compose의 웹을 체크하려면 `http://web:3000/...`을 쓴다.
 - 로컬 dev 서버·워커(`npm run dev`, `npm run worker`)와 동시에 띄우지 않는다. 포트 3000이 충돌하고 같은 DB 볼륨을 쓰므로 워커 두 개가 함께 체크한다.
 
@@ -49,18 +49,14 @@ docker compose --profile app up -d --build --wait
 이메일 알림과 초대 메일은 `.env`의 SMTP 설정으로 보낸다. 기본값은 로컬 Mailpit이라 실제로 발송되지 않고 http://localhost:8025 에서만 보인다.
 
 ```bash
-# 로컬 개발 (npm run dev / npm run worker)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=alerts@example.com
 SMTP_PASS=앱-비밀번호
 SMTP_FROM="Uptime Monitor <alerts@example.com>"
-
-# Docker 스택에서는 SMTP_HOST/SMTP_PORT 대신 아래 두 값을 쓴다 (SMTP_USER/PASS/FROM은 공통)
-COMPOSE_SMTP_HOST=smtp.gmail.com
-COMPOSE_SMTP_PORT=587
 ```
 
+- 로컬 실행(`npm run dev`, `npm run worker`)과 Docker 스택이 같은 `.env` 값을 쓴다.
 - 포트 465면 처음부터 TLS로 연결하고, 그 밖의 포트(587 등)는 서버가 지원하면 STARTTLS로 전환한다.
 - `SMTP_USER`가 비어 있으면 인증 없이 보낸다(Mailpit용).
 - Gmail은 계정에 2단계 인증을 켜고 **앱 비밀번호**를 만들어 `SMTP_PASS`에 넣는다. 일반 비밀번호로는 로그인되지 않는다. `SMTP_FROM` 주소는 로그인한 계정과 같게 둔다.
