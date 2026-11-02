@@ -5,7 +5,9 @@ import { connection } from "next/server";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { dayLevel, formatUptime, uptimePercent, type DayRow } from "@/lib/monitor/stats";
 import { SLUG_PATTERN } from "@/lib/status-page/input";
+import { dateTimeFormat, timeZoneLabel } from "@/lib/timezone";
 import { getPublicStatusPage, getStatusPageTitle, type PublicMonitor, type PublicMonitorStatus } from "@/server/status-pages";
+import { getViewerTimeZone } from "@/server/timezone";
 
 // Public, no login (see PUBLIC_PREFIXES in src/proxy.ts). Only the fields in
 // PublicMonitor are ever read here: never monitor URLs or check errors.
@@ -26,14 +28,14 @@ export default function PublicStatusPage({ params }: PageProps<"/status/[slug]">
   );
 }
 
-const timeFmt = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" });
-
 async function StatusContent({ params }: Pick<PageProps<"/status/[slug]">, "params">) {
   await connection(); // "today" and the footer time are per request
   const { slug } = await params;
   if (!SLUG_PATTERN.test(slug)) notFound();
-  const page = await getPublicStatusPage(slug);
+  const [page, tz] = await Promise.all([getPublicStatusPage(slug), getViewerTimeZone()]);
   if (!page) notFound();
+  const now = new Date();
+  const updatedAt = dateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: tz }).format(now);
 
   const active = page.monitors.filter((m) => m.status !== "paused");
   const down = active.filter((m) => m.status === "down").length;
@@ -57,7 +59,7 @@ async function StatusContent({ params }: Pick<PageProps<"/status/[slug]">, "para
       )}
 
       <footer className="text-center text-xs text-muted-foreground">
-        30초마다 자동 갱신 · 마지막 갱신 {timeFmt.format(new Date())} (KST) · 날짜는 한국 시간 기준
+        30초마다 자동 갱신 · 마지막 갱신 {updatedAt} ({timeZoneLabel(tz, now)}) · 일별 막대는 한국 시간(KST) 날짜 기준
       </footer>
     </>
   );

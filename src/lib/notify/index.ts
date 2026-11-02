@@ -2,7 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { alertChannels, monitorAlertChannels } from "../db/schema";
 import { sendMail } from "../mail";
-import { formatAlert, type AlertMessage, type MonitorAlertEvent, type SlackPayload } from "./message";
+import { getSettings } from "../settings";
+import { DEFAULT_TIME_ZONE } from "../timezone";
+import { formatAlert, type AlertEvent, type AlertMessage, type MonitorAlertEvent, type SlackPayload } from "./message";
 
 // Sending alerts. Shared lib code (worker + web "테스트 발송"): no Next/React imports.
 
@@ -17,6 +19,20 @@ const SLACK_ICON_EMOJI = ":shield:";
 
 function appUrl() {
   return process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+}
+
+/** The team's alert time zone (app_settings); the default if it can't be read. */
+async function alertTimeZone(): Promise<string> {
+  try {
+    return (await getSettings()).alertTimeZone;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
+}
+
+/** formatAlert with the app URL and the team's alert time zone. */
+export async function buildAlert(event: AlertEvent): Promise<AlertMessage> {
+  return formatAlert(event, { appUrl: appUrl(), timeZone: await alertTimeZone() });
 }
 
 export async function sendSlack(webhookUrl: string, payload: SlackPayload): Promise<void> {
@@ -76,7 +92,7 @@ export async function notifyMonitorEvent(event: MonitorAlertEvent): Promise<Send
     return [{ channel: { id: "", type: "email", name: "(채널 조회)", target: "" }, error: describeSendError(err) }];
   }
   if (channels.length === 0) return [];
-  return sendToChannels(channels, formatAlert(event, appUrl()));
+  return sendToChannels(channels, await buildAlert(event));
 }
 
 export { formatAlert };

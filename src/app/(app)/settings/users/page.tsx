@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/table";
 import { db } from "@/lib/db";
 import { invitations, user } from "@/lib/db/schema";
+import { dateTimeFormat } from "@/lib/timezone";
 import { requireAdmin } from "@/server/session";
+import { getViewerTimeZone } from "@/server/timezone";
 import {
   cancelInvitationAction,
   changeRoleAction,
@@ -25,7 +27,6 @@ import {
 } from "./actions";
 
 const roleLabel = { admin: "관리자", member: "멤버" } as const;
-const fmt = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeZone: "Asia/Seoul" });
 
 export default function UsersPage() {
   return (
@@ -40,14 +41,16 @@ export default function UsersPage() {
 
 async function UsersContent() {
   const me = await requireAdmin();
-  const [users, pending] = await Promise.all([
+  const [users, pending, tz] = await Promise.all([
     db.select().from(user).orderBy(asc(user.createdAt)),
     db
       .select()
       .from(invitations)
       .where(and(isNull(invitations.acceptedAt), gt(invitations.expiresAt, new Date())))
       .orderBy(asc(invitations.createdAt)),
+    getViewerTimeZone(),
   ]);
+  const fmt = dateTimeFormat("ko-KR", { dateStyle: "medium", timeZone: tz });
 
   return (
     <>

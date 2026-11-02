@@ -6,9 +6,8 @@ import { z } from "zod";
 import type { FormState } from "@/components/action-form";
 import { db } from "@/lib/db";
 import { alertChannels } from "@/lib/db/schema";
-import { sendToChannel, describeSendError } from "@/lib/notify";
+import { buildAlert, sendToChannel, describeSendError } from "@/lib/notify";
 import { channelInputSchema } from "@/lib/notify/input";
-import { formatAlert } from "@/lib/notify/message";
 import { requireUser } from "@/server/session";
 
 // Alert channels are shared by the whole team: any signed-in user can manage them.
@@ -52,7 +51,7 @@ export async function testChannelAction(_: TestSendState, fd: FormData): Promise
   if (!c) return { ok: false, message: "채널을 찾을 수 없습니다." };
 
   try {
-    await sendToChannel(c, formatAlert({ kind: "test", channelName: c.name, at: new Date() }));
+    await sendToChannel(c, await buildAlert({ kind: "test", channelName: c.name, at: new Date() }));
     return { ok: true, message: "보냈습니다." };
   } catch (err) {
     console.error("test alert failed", c.id, err);

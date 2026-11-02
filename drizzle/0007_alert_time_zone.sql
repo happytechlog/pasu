@@ -1,0 +1,1 @@
+ALTER TABLE "app_settings" ADD COLUMN "alert_time_zone" text DEFAULT 'Asia/Seoul' NOT NULL;

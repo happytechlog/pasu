@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CHART_RANGES, formatDuration, formatUptime, parseRange, uptimePercent, type ChartRange } from "@/lib/monitor/stats";
 import { getMonitor, getResponseBuckets, getUptimeWindows, listIncidents, listRecentChecks } from "@/server/dashboard";
 import { requireUser } from "@/server/session";
+import { getViewerTimeZone } from "@/server/timezone";
 import { toggleMonitorAction } from "../actions";
-import { dateTimeFmt, HeatBar, SslDays, StatusBadge } from "../monitor-bits";
+import { formatDateTime, HeatBar, SslDays, StatusBadge } from "../monitor-bits";
 import { ResponseChart } from "./response-chart";
 
 export default function MonitorDetailPage({ params, searchParams }: PageProps<"/monitors/[id]">) {
@@ -46,12 +47,14 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
   if (!m) notFound();
 
   const now = new Date();
-  const [uptime, buckets, incidents, recent] = await Promise.all([
+  const [uptime, buckets, incidents, recent, tz] = await Promise.all([
     getUptimeWindows(m.id),
     getResponseBuckets(m.id, range, now),
     listIncidents(m.id),
     listRecentChecks(m.id),
+    getViewerTimeZone(),
   ]);
+  const fmt = (d: Date) => formatDateTime(d, tz);
   const latest = recent[0];
   const { bucketMs } = CHART_RANGES[range];
 
@@ -93,7 +96,7 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
           <SslDays expiresAt={m.sslExpiresAt} />
         </Stat>
         <Stat label="마지막 체크">
-          <span className="text-sm font-normal">{m.lastCheckedAt ? dateTimeFmt.format(m.lastCheckedAt) : "—"}</span>
+          <span className="text-sm font-normal">{m.lastCheckedAt ? fmt(m.lastCheckedAt) : "—"}</span>
         </Stat>
       </div>
 
@@ -119,9 +122,11 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
             buckets={buckets.map((b) => ({ t: b.bucket.getTime(), total: b.total, failed: b.failed, avgMs: b.avgMs }))}
             bucketMs={bucketMs}
             showDate={range !== "24h"}
+            timeZone={tz}
           />
           <p className="text-xs text-muted-foreground">
             {formatDuration(bucketMs)} 단위 평균(성공한 체크만). 아래 띠의 빨간색은 실패가 있던 구간, 회색은 체크 기록이 없는 구간입니다.
+            시간대 {tz}.
           </p>
         </CardContent>
       </Card>
@@ -143,9 +148,9 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
             <TableBody>
               {incidents.map((i) => (
                 <TableRow key={i.id}>
-                  <TableCell className="tabular-nums">{dateTimeFmt.format(i.startedAt)}</TableCell>
+                  <TableCell className="tabular-nums">{fmt(i.startedAt)}</TableCell>
                   <TableCell className="tabular-nums">
-                    {i.resolvedAt ? dateTimeFmt.format(i.resolvedAt) : <span className="font-medium text-destructive">진행 중</span>}
+                    {i.resolvedAt ? fmt(i.resolvedAt) :<span className="font-medium text-destructive">진행 중</span>}
                   </TableCell>
                   <TableCell>{formatDuration((i.resolvedAt ?? now).getTime() - i.startedAt.getTime())}</TableCell>
                   <TableCell className="max-w-sm truncate" title={i.reason ?? undefined}>
@@ -161,7 +166,7 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold">최근 체크</h2>
-          <HeatBar recent={recent} />
+          <HeatBar recent={recent} timeZone={tz} />
         </div>
         {recent.length === 0 ? (
           <p className="text-sm text-muted-foreground">아직 체크 기록이 없습니다.</p>
@@ -179,7 +184,7 @@ async function MonitorDetail({ params, searchParams }: Pick<PageProps<"/monitors
             <TableBody>
               {recent.map((c) => (
                 <TableRow key={c.checkedAt.toISOString()}>
-                  <TableCell className="tabular-nums">{dateTimeFmt.format(c.checkedAt)}</TableCell>
+                  <TableCell className="tabular-nums">{fmt(c.checkedAt)}</TableCell>
                   <TableCell>{c.ok ? "● 성공" : <span className="font-medium text-destructive">▲ 실패</span>}</TableCell>
                   <TableCell className="text-right tabular-nums">{c.statusCode ?? "—"}</TableCell>
                   <TableCell className="text-right tabular-nums">{c.responseTimeMs !== null ? `${c.responseTimeMs}ms` : "—"}</TableCell>

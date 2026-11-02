@@ -252,6 +252,8 @@ export const appSettings = pgTable(
   {
     id: integer("id").primaryKey().default(1),
     checkRetentionDays: integer("check_retention_days").notNull().default(30),
+    // IANA zone for times in email alerts and Slack fallback text.
+    alertTimeZone: text("alert_time_zone").notNull().default("Asia/Seoul"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("app_settings_single_row", sql`${t.id} = 1`)],

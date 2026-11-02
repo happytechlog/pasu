@@ -1,7 +1,12 @@
 // Alert text formatting. Pure: no I/O. Shared by the worker and the web
 // ("테스트 발송").
+//
+// Times: email text uses the team's alert time zone with a zone label
+// ("14:03 KST"). Slack uses <!date^…> tokens, which Slack renders in each
+// reader's own time zone; the alert time zone is only the token's fallback.
 
 import { formatDuration } from "../monitor/stats";
+import { dateTimeFormat, DEFAULT_TIME_ZONE, timeZoneLabel } from "../timezone";
 
 export type AlertMonitor = { id: string; name: string; url: string };
 
@@ -26,17 +31,35 @@ export type SlackPayload = {
 /** `text` is used for email; Slack gets the richer `slack` payload. */
 export type AlertMessage = { subject: string; text: string; slack: SlackPayload };
 
-// YYYY-MM-DD HH:mm:ss in KST.
-const dateTimeFmt = new Intl.DateTimeFormat("sv-SE", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
+/** Formatting for one alert's time zone. */
+function zoneFormats(tz: string) {
+  return {
+    // YYYY-MM-DD HH:mm:ss
+    dateTime: dateTimeFormat("sv-SE", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }),
+    // HH:mm
+    time: dateTimeFormat("ko-KR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }),
+    // YYYY-MM-DD
+    date: dateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }),
+    label: (at: Date) => timeZoneLabel(tz, at),
+  };
+}
+
+/**
+ * Slack date token: shown in the reader's time zone (and 12/24h preference).
+ * `fallback` is used by clients that can't render it, e.g. notifications.
+ */
+export function slackDate(at: Date, format: string, fallback: string): string {
+  return `<!date^${Math.floor(at.getTime() / 1000)}^${format}|${slackEscape(fallback).replace(/\|/g, "¦")}>`;
+}
 
 const SLACK_COLORS = { down: "#E01E5A", up: "#2EB67D", warn: "#ECB22E", info: "#8D8D8D" } as const;
 
@@ -82,30 +105,22 @@ function slackMessage(o: {
   };
 }
 
-const timeFmt = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-// YYYY-MM-DD in KST.
-const dateFmt = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Seoul",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
+export type FormatOptions = {
+  /** e.g. http://localhost:3000: adds a link to the monitor's dashboard page ("모니터 보기" in Slack). */
+  appUrl?: string;
+  /** IANA zone for email times and Slack fallbacks. Default Asia/Seoul. */
+  timeZone?: string;
+};
 
 /**
- * Builds the alert. `appUrl` (e.g. http://localhost:3000) adds a link to the
- * monitor's dashboard page (a "모니터 보기" button in Slack).
- * Email text:
- *   🔴 [DOWN] API 서버 — https://api.example.com · 원인: HTTP 503 · 14:03 감지
+ * Builds the alert. Email text:
+ *   🔴 [DOWN] API 서버 — https://api.example.com · 원인: HTTP 503 · 14:03 KST 감지
  *   🟢 [UP] API 서버 복구 — 다운 시간 12분
  *   ⚠️ [SSL] API 서버 — 인증서가 7일 후 만료됩니다 (2026-11-07)
  */
-export function formatAlert(e: AlertEvent, appUrl?: string): AlertMessage {
+export function formatAlert(e: AlertEvent, { appUrl, timeZone = DEFAULT_TIME_ZONE }: FormatOptions = {}): AlertMessage {
+  const f = zoneFormats(timeZone);
+  const clock = (d: Date) => `${f.time.format(d)} ${f.label(d)}`; // "14:03 KST"
   const base = appUrl?.replace(/\/+$/, "");
   const monitorPage = (id: string) => (base ? `${base}/monitors/${id}` : null);
   const link = (id: string) => (base ? `\n${monitorPage(id)}` : "");
@@ -113,12 +128,12 @@ export function formatAlert(e: AlertEvent, appUrl?: string): AlertMessage {
     const url = monitorPage(id);
     return url ? { text: "모니터 보기", url } : undefined;
   };
-  const at = `_${dateTimeFmt.format(e.at)}_`;
+  const at = `_${slackDate(e.at, "{date_num} {time_secs}", `${f.dateTime.format(e.at)} ${f.label(e.at)}`)}_`;
 
   switch (e.kind) {
     case "down": {
       const reason = e.reason ?? "알 수 없음";
-      const line = `🔴 [DOWN] ${e.monitor.name} — ${e.monitor.url} · 원인: ${reason} · ${timeFmt.format(e.at)} 감지`;
+      const line = `🔴 [DOWN] ${e.monitor.name} — ${e.monitor.url} · 원인: ${reason} · ${clock(e.at)} 감지`;
       return {
         subject: `[DOWN] ${e.monitor.name}`,
         text: line + link(e.monitor.id),
@@ -155,7 +170,7 @@ export function formatAlert(e: AlertEvent, appUrl?: string): AlertMessage {
       };
     }
     case "ssl": {
-      const date = dateFmt.format(e.expiresAt);
+      const date = f.date.format(e.expiresAt);
       const expired = e.daysLeft < 0;
       const when = expired ? "인증서가 만료되었습니다" : e.daysLeft === 0 ? "인증서가 24시간 안에 만료됩니다" : `인증서가 ${e.daysLeft}일 후 만료됩니다`;
       const left = expired ? "만료됨" : e.daysLeft === 0 ? "24시간 이내" : `${e.daysLeft}일`;
@@ -168,7 +183,7 @@ export function formatAlert(e: AlertEvent, appUrl?: string): AlertMessage {
           title: `⚠️ *${heading}: ${slackLink(e.monitor.url, e.monitor.name)}*`,
           color: expired ? SLACK_COLORS.down : SLACK_COLORS.warn,
           fields: [
-            ["만료일", date],
+            ["만료일", slackDate(e.expiresAt, "{date_num}", date)],
             ["남은 기간", left],
             ["확인한 URL", slackLink(e.monitor.url)],
           ],
@@ -179,7 +194,7 @@ export function formatAlert(e: AlertEvent, appUrl?: string): AlertMessage {
     case "test":
       return {
         subject: "[테스트] 알림 채널 확인",
-        text: `🔔 [테스트] '${e.channelName}' 채널로 보낸 테스트 알림입니다 · ${timeFmt.format(e.at)}`,
+        text: `🔔 [테스트] '${e.channelName}' 채널로 보낸 테스트 알림입니다 · ${clock(e.at)}`,
         slack: slackMessage({
           fallback: `🔔 테스트 알림: ${e.channelName}`,
           title: "🔔 *테스트 알림* — 이 채널로 알림이 정상 전달됩니다",

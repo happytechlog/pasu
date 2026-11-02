@@ -13,9 +13,10 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { formatUptime, uptimePercent } from "@/lib/monitor/stats";
 import { listMonitorSummaries } from "@/server/dashboard";
 import { requireUser } from "@/server/session";
+import { getViewerTimeZone } from "@/server/timezone";
 import { deleteMonitorAction, toggleMonitorAction } from "./monitors/actions";
 import { ConfirmSubmit } from "./monitors/confirm-submit";
-import { dateTimeFmt, HeatBar, SslDays, StatusBadge } from "./monitors/monitor-bits";
+import { formatDateTime, HeatBar, SslDays, StatusBadge } from "./monitors/monitor-bits";
 
 export default function Home() {
   return (
@@ -35,7 +36,7 @@ export default function Home() {
 
 async function MonitorList() {
   await requireUser();
-  const rows = await listMonitorSummaries();
+  const [rows, tz] = await Promise.all([listMonitorSummaries(), getViewerTimeZone()]);
 
   if (rows.length === 0) {
     return (
@@ -53,7 +54,7 @@ async function MonitorList() {
       <AutoRefresh />
       <p className="text-sm text-muted-foreground">
         모니터 {rows.length}개 · 장애{" "}
-        <span className={down > 0 ? "font-medium text-destructive" : undefined}>{down}</span>개 · 30초마다 자동 갱신
+        <span className={down > 0 ? "font-medium text-destructive" : undefined}>{down}</span>개 · 30초마다 자동 갱신 · 시간대 {tz}
       </p>
       <Table>
         <TableHeader>
@@ -83,9 +84,9 @@ async function MonitorList() {
                 <StatusBadge enabled={m.enabled} status={m.status} />
               </TableCell>
               <TableCell>
-                <HeatBar recent={m.recent} />
+                <HeatBar recent={m.recent} timeZone={tz} />
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {m.intervalSec === 300 ? "5분" : "1분"} 간격 · {m.lastCheckedAt ? dateTimeFmt.format(m.lastCheckedAt) : "체크 전"}
+                  {m.intervalSec === 300 ? "5분" : "1분"} 간격 · {m.lastCheckedAt ? formatDateTime(m.lastCheckedAt, tz) : "체크 전"}
                 </div>
               </TableCell>
               <TableCell className="text-right tabular-nums">

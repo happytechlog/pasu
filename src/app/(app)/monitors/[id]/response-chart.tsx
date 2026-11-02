@@ -20,7 +20,18 @@ function niceTicks(max: number): number[] {
 
 const fmtNum = new Intl.NumberFormat("ko-KR");
 
-export function ResponseChart({ buckets, bucketMs, showDate }: { buckets: ChartBucket[]; bucketMs: number; showDate: boolean }) {
+export function ResponseChart({
+  buckets,
+  bucketMs,
+  showDate,
+  timeZone,
+}: {
+  buckets: ChartBucket[];
+  bucketMs: number;
+  showDate: boolean;
+  /** Viewer's zone, from the server so the SSR and client renders match. */
+  timeZone: string;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -34,7 +45,7 @@ export function ResponseChart({ buckets, bucketMs, showDate }: { buckets: ChartB
   }, []);
 
   const timeFmt = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
+    timeZone,
     ...(showDate ? { month: "numeric", day: "numeric" } : {}),
     hour: "2-digit",
     minute: "2-digit",
