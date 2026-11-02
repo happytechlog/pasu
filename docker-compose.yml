@@ -11,7 +11,7 @@ x-app-env: &app-env
   SMTP_PORT: ${SMTP_PORT:-1025}
   SMTP_USER: ${SMTP_USER:-}
   SMTP_PASS: ${SMTP_PASS:-}
-  SMTP_FROM: ${SMTP_FROM:-Uptime Monitor <alerts@localhost>}
+  SMTP_FROM: ${SMTP_FROM:-Pasu Monitor <alerts@localhost>}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
 
 services:
@@ -42,7 +42,7 @@ services:
   migrate:
     profiles: [app]
     build: { context: ., target: worker }
-    image: simple-monitoring-worker
+    image: pasu-worker
     command: ["node", "migrate.mjs"]
     environment: *app-env
     depends_on:
@@ -51,7 +51,7 @@ services:
   web:
     profiles: [app]
     build: { context: ., target: web }
-    image: simple-monitoring-web
+    image: pasu-web
     restart: unless-stopped
     environment:
       <<: *app-env
@@ -63,7 +63,7 @@ services:
 
   worker:
     profiles: [app]
-    image: simple-monitoring-worker
+    image: pasu-worker
     restart: unless-stopped
     environment: *app-env
     stop_grace_period: 30s

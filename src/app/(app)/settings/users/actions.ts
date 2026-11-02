@@ -43,8 +43,8 @@ export async function inviteUserAction(_: FormState, fd: FormData): Promise<Form
   try {
     await sendMail({
       to: email,
-      subject: "[Uptime Monitor] 팀 초대",
-      text: `${admin.name}님이 Uptime Monitor에 초대했습니다.\n\n아래 링크에서 계정을 만드세요(7일 동안 유효).\n${link}\n`,
+      subject: "[Pasu Monitor] 팀 초대",
+      text: `${admin.name}님이 Pasu Monitor에 초대했습니다.\n\n아래 링크에서 계정을 만드세요(7일 동안 유효).\n${link}\n`,
     });
   } catch (err) {
     console.error("invite mail failed", err);

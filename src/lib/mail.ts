@@ -19,7 +19,7 @@ function getTransport() {
 
 export async function sendMail(msg: { to: string; subject: string; text: string; html?: string }) {
   await getTransport().sendMail({
-    from: process.env.SMTP_FROM ?? "Uptime Monitor <alerts@localhost>",
+    from: process.env.SMTP_FROM ?? "Pasu Monitor <alerts@localhost>",
     ...msg,
   });
 }

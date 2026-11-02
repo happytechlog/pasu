@@ -12,7 +12,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       <header className="border-b">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-6 px-4">
           <Link href="/" className="font-semibold">
-            Uptime Monitor
+            파수
           </Link>
           <Suspense fallback={<div className="flex-1" />}>
             <UserNav />

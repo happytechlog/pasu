@@ -11,7 +11,7 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
     <Card>
       <CardHeader>
         <CardTitle>로그인</CardTitle>
-        <CardDescription>Uptime Monitor에 로그인합니다.</CardDescription>
+        <CardDescription>파수에 로그인합니다.</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense fallback={<p className="text-sm text-muted-foreground">불러오는 중…</p>}>

@@ -2,23 +2,28 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { alertChannels, monitorAlertChannels } from "../db/schema";
 import { sendMail } from "../mail";
-import { formatAlert, type AlertMessage, type MonitorAlertEvent } from "./message";
+import { formatAlert, type AlertMessage, type MonitorAlertEvent, type SlackPayload } from "./message";
 
 // Sending alerts. Shared lib code (worker + web "테스트 발송"): no Next/React imports.
 
 export type Channel = { id: string; type: "slack" | "email"; name: string; target: string };
 
 const SLACK_TIMEOUT_MS = 10_000;
+// Shown as the sender instead of "incoming-webhook". Honored by legacy
+// "Incoming WebHooks" integrations; Slack-app webhooks ignore it and use the
+// app's own name/icon.
+const SLACK_USERNAME = "PasuMonitor";
+const SLACK_ICON_EMOJI = ":shield:";
 
 function appUrl() {
   return process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 }
 
-export async function sendSlack(webhookUrl: string, text: string): Promise<void> {
+export async function sendSlack(webhookUrl: string, payload: SlackPayload): Promise<void> {
   const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ username: SLACK_USERNAME, icon_emoji: SLACK_ICON_EMOJI, ...payload }),
     redirect: "error",
     signal: AbortSignal.timeout(SLACK_TIMEOUT_MS),
   });
@@ -29,8 +34,8 @@ export async function sendSlack(webhookUrl: string, text: string): Promise<void>
 }
 
 export async function sendToChannel(channel: Channel, msg: AlertMessage): Promise<void> {
-  if (channel.type === "slack") return sendSlack(channel.target, msg.text);
-  return sendMail({ to: channel.target, subject: `[Uptime Monitor] ${msg.subject}`, text: msg.text });
+  if (channel.type === "slack") return sendSlack(channel.target, msg.slack);
+  return sendMail({ to: channel.target, subject: `[Pasu Monitor] ${msg.subject}`, text: msg.text });
 }
 
 /** Short reason for showing a send failure to users / logs. */

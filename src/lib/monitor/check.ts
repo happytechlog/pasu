@@ -15,7 +15,7 @@ export type CheckResult = {
   error: string | null;
 };
 
-const USER_AGENT = "UptimeMonitor/1.0";
+const USER_AGENT = "Pasu/1.0";
 
 // Redirects are followed unless the spec expects a 3xx explicitly
 // (otherwise a "301" rule could never match).

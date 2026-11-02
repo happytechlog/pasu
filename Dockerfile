@@ -1,6 +1,6 @@
 # One Dockerfile, two images:
-#   docker build --target web    -t simple-monitoring-web .
-#   docker build --target worker -t simple-monitoring-worker .
+#   docker build --target web    -t pasu-web .
+#   docker build --target worker -t pasu-worker .
 # The worker image also runs migrations: `node migrate.mjs`.
 
 FROM node:24-alpine AS deps

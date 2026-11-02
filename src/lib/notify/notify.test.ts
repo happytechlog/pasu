@@ -42,6 +42,70 @@ describe("formatAlert", () => {
   });
 });
 
+describe("formatAlert slack payload", () => {
+  it("down: title, red attachment with details and a monitor button", () => {
+    const { slack } = formatAlert({ kind: "down", monitor, reason: "HTTP 503", at }, "http://localhost:3000");
+    expect(slack.text).toBe("🔴 장애 발생: API 서버 — HTTP 503");
+    expect(slack.blocks).toEqual([
+      { type: "section", text: { type: "mrkdwn", text: "🔴 *장애 발생: <https://api.example.com|API 서버>*" } },
+    ]);
+    expect(slack.attachments).toEqual([
+      {
+        color: "#E01E5A",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "*감지 시각:* _2026-10-31 14:03:00_\n*확인한 URL:* <https://api.example.com>\n*원인:* `HTTP 503`",
+            },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "모니터 보기" },
+                url: "http://localhost:3000/monitors/m1",
+                style: "primary",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("escapes user text and omits the button without an app url", () => {
+    const evil = { id: "m2", name: "<!channel> A|B & C", url: "https://x.example.com/?a=1&b=2" };
+    const { slack } = formatAlert({ kind: "down", monitor: evil, reason: "bad `code` <x>", at });
+    const title = (slack.blocks[0] as { text: { text: string } }).text.text;
+    expect(title).toBe("🔴 *장애 발생: <https://x.example.com/?a=1&amp;b=2|&lt;!channel&gt; A¦B &amp; C>*");
+    expect(slack.text).not.toContain("<!channel>");
+    const details = slack.attachments[0].blocks;
+    expect(details).toHaveLength(1);
+    expect((details[0] as { text: { text: string } }).text.text).toContain("*원인:* `bad 'code' &lt;x&gt;`");
+  });
+
+  it("recovered: green, with downtime when known", () => {
+    const { slack } = formatAlert({ kind: "recovered", monitor, downtimeMs: 12 * 60_000, at });
+    expect(slack.attachments[0].color).toBe("#2EB67D");
+    expect(JSON.stringify(slack)).toContain("*다운 시간:* 12분");
+    const unknown = formatAlert({ kind: "recovered", monitor, downtimeMs: null, at }).slack;
+    expect(JSON.stringify(unknown)).not.toContain("다운 시간");
+  });
+
+  it("ssl: amber while expiring, red once expired", () => {
+    const expiresAt = new Date("2026-11-06T20:00:00Z");
+    const soon = formatAlert({ kind: "ssl", monitor, expiresAt, daysLeft: 7, at }).slack;
+    expect(soon.attachments[0].color).toBe("#ECB22E");
+    expect(JSON.stringify(soon)).toContain("*만료일:* 2026-11-07\\n*남은 기간:* 7일");
+    const expired = formatAlert({ kind: "ssl", monitor, expiresAt, daysLeft: -1, at }).slack;
+    expect(expired.attachments[0].color).toBe("#E01E5A");
+    expect(expired.text).toContain("SSL 인증서 만료됨");
+  });
+});
+
 describe("maskSecret", () => {
   it("keeps only the last 4 characters", () => {
     expect(maskSecret("https://hooks.slack.com/services/T0/B0/abcdWXYZ")).toBe("••••WXYZ");

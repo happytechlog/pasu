@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Uptime Monitor",
-  description: "Website uptime monitoring",
+  title: "파수",
+  description: "웹사이트 가동 모니터링",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
