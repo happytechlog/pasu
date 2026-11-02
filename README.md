@@ -1,4 +1,4 @@
-# Simple Monitoring
+# 파수 (Pasu)
 
 UptimeRobot과 비슷한 웹사이트 가동 모니터링 서비스. Next.js 웹 + 상시 실행 워커 + PostgreSQL.
 
@@ -53,7 +53,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=alerts@example.com
 SMTP_PASS=앱-비밀번호
-SMTP_FROM="Uptime Monitor <alerts@example.com>"
+SMTP_FROM="Pasu Monitor <alerts@example.com>"
 ```
 
 - 로컬 실행(`npm run dev`, `npm run worker`)과 Docker 스택이 같은 `.env` 값을 쓴다.
@@ -68,7 +68,9 @@ SMTP_FROM="Uptime Monitor <alerts@example.com>"
 3. **Add New Webhook to Workspace**를 눌러 알림을 받을 채널을 고르고 허용한다.
 4. 생성된 `https://hooks.slack.com/services/...` URL을 복사한다. 이 URL만 있으면 누구나 그 채널에 글을 쓸 수 있으니 외부에 공유하지 않는다.
 
-> 실제 Slack 워크스페이스로 발송해 보는 확인은 아직 하지 않았다(가짜 webhook으로 실패 처리까지만 확인).
+메시지는 발신자 이름 `PasuMonitor`(아이콘 🛡️)로 보내고, 제목 줄 아래에 상태 색 막대와 감지 시각·확인한 URL·원인, "모니터 보기" 버튼을 붙인다.
+- 앱 디렉터리의 예전 **Incoming WebHooks** 연동으로 만든 webhook은 이 이름과 아이콘이 그대로 적용된다.
+- 위 방법처럼 Slack 앱으로 만든 webhook은 Slack이 이름·아이콘 지정을 무시하고 앱 이름을 쓴다. 앱 설정의 **Basic Information → Display Information**에서 이름을 `PasuMonitor`로 바꾼다.
 
 ### 3. 알림 채널 등록 (`/settings/alerts`, 상단 메뉴 "알림채널")
 - 로그인한 팀원 누구나 채널을 추가·끄기·삭제할 수 있고, 채널은 팀 전체가 함께 쓴다.
