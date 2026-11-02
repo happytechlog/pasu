@@ -6,12 +6,12 @@ _마지막 갱신: 2026-11-01 · 10단계(시간대) 끝남: 화면은 보는 �
 - 동작함: 인증, 모니터 CRUD, 워커, 대시보드, 알림(down/recovered/ssl), SSL 만료 확인, 공개 상태 페이지, 체크 보관 기간·알림 시간대 설정, Docker 스택(`migrate` → `web` + `worker`).
 - 시간대: 웹은 `<TimeZoneSync>`가 브라우저 시간대를 `tz` 쿠키에 넣고 서버가 `getViewerTimeZone()`으로 읽는다(첫 방문 한 번만 KST로 그렸다가 refresh). 목록·차트 설명에 "시간대 …"를 표시한다. 이메일은 `/settings/general`의 알림 시간대 + 약칭(`14:03 KST`, `23:10 PST`). Slack은 `<!date^unix^{date_num} {time_secs}|대체 텍스트>`.
 - 일별 집계(`monitor_daily_stats`, 공개 페이지 90일 막대, 차트 버킷 기준점)는 KST 고정. 공개 페이지 하단에 "일별 막대는 한국 시간(KST) 날짜 기준"이라고 적었다.
-- typecheck, lint, build, test(113개) 통과. Docker 스택을 새 이미지로 띄워 마이그레이션 0007 적용, 브라우저(LA 시간대)에서 목록·상세 차트·설정 저장 확인, curl로 공개 페이지의 쿠키별(없음/서울/LA/잘못된 값) 표시 확인. 알림 문구는 DB 설정을 읽는 `buildAlert`로 출력만 확인했다(실제 발송은 안 함).
+- typecheck, lint, build, test(113개) 통과. Docker 스택을 새 이미지로 띄워 마이그레이션 0007 적용, 브라우저(LA 시간대)에서 목록·상세 차트·설정 저장 확인, curl로 공개 페이지의 쿠키별(없음/서울/LA/잘못된 값) 표시 확인. 사용자가 실제 Slack("System Alerts Slack" 채널)으로 테스트 발송을 받아 PasuMonitor 이름, 회색 막대, 읽는 사람 시간대(LA, 12시간제)로 바뀐 `<!date>` 시각을 확인했다. 이메일은 실제 발송하지 않았다.
 - 로컬 DB 테스트 데이터: 관리자 `admin@example.com` / `password1234`, 상태 페이지 `acme-status`. 알림 시간대는 기본값(Asia/Seoul)으로 되돌려 두었다. 지금 Docker 스택이 실행 중이다.
 
 ## 다음 할 일
-- `/settings/alerts`의 테스트 발송으로 새 Slack 형식(PasuMonitor 이름, 색 막대, `<!date>` 시각)을 실제 Slack에서 확인한다. 로컬 `.env`의 SMTP가 실제 Gmail이라 이메일 테스트 발송은 실제 주소로 간다.
-- 그 뒤 `PLAN.md`의 "보류·나중에 정할 것"(배포 위치, webhook 암호화, 키워드 체크, 점검 시간) 중에서 사용자와 고른다.
+- 필요하면 이메일 테스트 발송으로 `14:03 KST` 형식을 확인한다. 로컬 `.env`의 SMTP가 실제 Gmail이라 실제 주소로 간다.
+- `PLAN.md`의 "보류·나중에 정할 것"(배포 위치, webhook 암호화, 키워드 체크, 점검 시간) 중에서 사용자와 고른다.
 
 ## 미해결·결정 필요
 - 사용자별 시간대 고정(출장 중에도 서울 시간 보기)은 없다. 필요하면 `user.timezone`을 두고 쿠키보다 우선하면 된다.
