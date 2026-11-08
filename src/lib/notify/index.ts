@@ -3,7 +3,7 @@ import { db } from "../db";
 import { alertChannels, monitorAlertChannels } from "../db/schema";
 import { sendMail } from "../mail";
 import { getSettings } from "../settings";
-import { DEFAULT_TIME_ZONE } from "../timezone";
+import { DEFAULT_TIME_ZONE, normalizeTimeZone } from "../timezone";
 import { formatAlert, type AlertEvent, type AlertMessage, type MonitorAlertEvent, type SlackPayload } from "./message";
 
 // Sending alerts. Shared lib code (worker + web "테스트 발송"): no Next/React imports.
@@ -24,7 +24,8 @@ function appUrl() {
 /** The team's alert time zone (app_settings); the default if it can't be read. */
 async function alertTimeZone(): Promise<string> {
   try {
-    return (await getSettings()).alertTimeZone;
+    // A stored zone this runtime's Intl rejects must not break every alert.
+    return normalizeTimeZone((await getSettings()).alertTimeZone) ?? DEFAULT_TIME_ZONE;
   } catch {
     return DEFAULT_TIME_ZONE;
   }
@@ -85,14 +86,26 @@ export async function channelsForMonitor(monitorId: string): Promise<Channel[]> 
 
 /** Sends a down/recovered/ssl alert to the monitor's enabled channels. Never throws. */
 export async function notifyMonitorEvent(event: MonitorAlertEvent): Promise<SendResult[]> {
+  const failure = (name: string, err: unknown): SendResult[] => [
+    { channel: { id: "", type: "email", name, target: "" }, error: describeSendError(err) },
+  ];
+
   let channels: Channel[];
   try {
     channels = await channelsForMonitor(event.monitor.id);
   } catch (err) {
-    return [{ channel: { id: "", type: "email", name: "(채널 조회)", target: "" }, error: describeSendError(err) }];
+    return failure("(채널 조회)", err);
   }
   if (channels.length === 0) return [];
-  return sendToChannels(channels, await buildAlert(event));
+
+  let msg: AlertMessage;
+  try {
+    msg = await buildAlert(event);
+  } catch (err) {
+    // Callers (worker, SSL loop) rely on this never throwing.
+    return failure("(알림 문구 생성)", err);
+  }
+  return sendToChannels(channels, msg);
 }
 
 export { formatAlert };

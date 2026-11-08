@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} })); // index.ts imports the DB client; not used here
 vi.mock("../mail", () => ({ sendMail: vi.fn(async () => {}) }));
+vi.mock("../settings", () => ({ getSettings: vi.fn(async () => ({ alertTimeZone: "Not/AZone" })) }));
 
-const { sendSlack, sendToChannels } = await import("./index");
+const { buildAlert, notifyMonitorEvent, sendSlack, sendToChannels } = await import("./index");
 const { sendMail } = await import("../mail");
 
 const hook = "https://hooks.slack.com/services/T0/B0/abcd";
@@ -29,6 +30,20 @@ describe("sendSlack", () => {
   it("throws with status and body on non-2xx", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("no_service", { status: 404 })));
     await expect(sendSlack(hook, slack)).rejects.toThrow("Slack 응답 404: no_service");
+  });
+});
+
+describe("alert time zone", () => {
+  it("falls back to the default zone when the stored one is rejected by Intl", async () => {
+    const msg = await buildAlert({ kind: "test", channelName: "a", at: new Date("2026-10-31T05:03:00Z") });
+    expect(msg.text).toContain("· 14:03 KST");
+  });
+
+  it("notifyMonitorEvent never throws, even when the channel lookup fails", async () => {
+    const monitor = { id: "m1", name: "API", url: "https://api.example.com" };
+    const results = await notifyMonitorEvent({ kind: "down", monitor, reason: null, at: new Date() });
+    expect(results).toHaveLength(1);
+    expect(results[0].error).not.toBeNull();
   });
 });
 

@@ -49,6 +49,41 @@ describe("formatAlert", () => {
   it("test message names the channel", () => {
     expect(formatAlert({ kind: "test", channelName: "운영팀", at }).text).toContain("'운영팀' 채널");
   });
+
+  it("midnight reads 00:05, never 24:05", () => {
+    const midnight = new Date("2026-10-30T15:05:09Z"); // 00:05:09 KST on the 31st
+    const m = formatAlert({ kind: "down", monitor, reason: null, at: midnight });
+    expect(m.text).toContain("· 00:05 KST 감지");
+    expect(m.text).not.toContain("24:05");
+    expect(JSON.stringify(m.slack)).toContain("2026-10-31 00:05:09 KST");
+  });
+
+  it("truncates a long failure reason in the email text and the Slack code span", () => {
+    const reason = "x".repeat(5000);
+    const m = formatAlert({ kind: "down", monitor, reason, at });
+    expect(m.text).toContain(`원인: ${"x".repeat(299)}… ·`);
+    expect(m.text.length).toBeLessThan(600);
+    expect(JSON.stringify(m.slack)).toContain("`" + "x".repeat(299) + "…`");
+  });
+
+  it("does not split an emoji when truncating", () => {
+    const m = formatAlert({ kind: "down", monitor, reason: "😀".repeat(400), at });
+    expect(m.text).toContain(`원인: ${"😀".repeat(149)}… ·`);
+  });
+
+  it("keeps every Slack section within Slack's 3000-character limit", () => {
+    // Escaping turns each "&" into "&amp;", so even a valid 2000-char URL can overflow.
+    const url = `https://example.com/?${"a=1&".repeat(490)}`;
+    const { slack } = formatAlert(
+      { kind: "down", monitor: { id: "m1", name: "N".repeat(100), url }, reason: "&".repeat(5000), at },
+      { appUrl: "http://localhost:3000" },
+    );
+    const sections = [...slack.blocks, ...slack.attachments.flatMap((a) => a.blocks)].filter((b) => b.type === "section");
+    expect(sections.length).toBe(2);
+    for (const s of sections) {
+      expect((s.text as { text: string }).text.length).toBeLessThanOrEqual(3000);
+    }
+  });
 });
 
 describe("formatAlert slack payload", () => {

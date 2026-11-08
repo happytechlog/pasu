@@ -43,10 +43,10 @@ function zoneFormats(tz: string) {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-      hour12: false,
+      hourCycle: "h23", // not hour12:false, which can print midnight as "24:05"
     }),
     // HH:mm
-    time: dateTimeFormat("ko-KR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }),
+    time: dateTimeFormat("ko-KR", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
     // YYYY-MM-DD
     date: dateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }),
     label: (at: Date) => timeZoneLabel(tz, at),
@@ -77,6 +77,22 @@ function slackCode(s: string): string {
   return "`" + slackEscape(s).replace(/`/g, "'") + "`";
 }
 
+// The failure reason comes from the monitored server (error text, status
+// line), so its length is not ours to control.
+const MAX_REASON_LENGTH = 300;
+// Slack rejects the whole message (400 invalid_blocks) if a section's text is longer.
+const SLACK_SECTION_MAX = 3000;
+
+// Counts UTF-16 units (String#length), the stricter way to measure, and never
+// cuts an emoji's surrogate pair in half.
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let cut = max - 1;
+  const last = s.charCodeAt(cut - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut--; // high surrogate without its low half
+  return s.slice(0, cut) + "…";
+}
+
 /**
  * Title line, then a colored attachment with "label: value" lines and an
  * optional link button (like UptimeRobot's alerts). Values must already be
@@ -90,7 +106,10 @@ function slackMessage(o: {
   button?: { text: string; url: string };
 }): SlackPayload {
   const details: SlackBlock[] = [
-    { type: "section", text: { type: "mrkdwn", text: o.fields.map(([k, v]) => `*${k}:* ${v}`).join("\n") } },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: truncate(o.fields.map(([k, v]) => `*${k}:* ${v}`).join("\n"), SLACK_SECTION_MAX) },
+    },
   ];
   if (o.button) {
     details.push({
@@ -100,7 +119,7 @@ function slackMessage(o: {
   }
   return {
     text: slackEscape(o.fallback),
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: o.title } }],
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: truncate(o.title, SLACK_SECTION_MAX) } }],
     attachments: [{ color: o.color, blocks: details }],
   };
 }
@@ -132,7 +151,7 @@ export function formatAlert(e: AlertEvent, { appUrl, timeZone = DEFAULT_TIME_ZON
 
   switch (e.kind) {
     case "down": {
-      const reason = e.reason ?? "알 수 없음";
+      const reason = truncate(e.reason ?? "알 수 없음", MAX_REASON_LENGTH);
       const line = `🔴 [DOWN] ${e.monitor.name} — ${e.monitor.url} · 원인: ${reason} · ${clock(e.at)} 감지`;
       return {
         subject: `[DOWN] ${e.monitor.name}`,
