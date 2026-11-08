@@ -39,13 +39,14 @@ async function StatusContent({ params }: Pick<PageProps<"/status/[slug]">, "para
 
   const active = page.monitors.filter((m) => m.status !== "paused");
   const down = active.filter((m) => m.status === "down").length;
+  const pending = active.filter((m) => m.status === "pending").length;
 
   return (
     <>
       <AutoRefresh />
       <header className="flex flex-col gap-4">
         <h1 className="text-3xl font-semibold">{page.title}</h1>
-        <OverallBanner down={down} total={active.length} />
+        <OverallBanner down={down} pending={pending} total={active.length} hasMonitors={page.monitors.length > 0} />
       </header>
 
       {page.monitors.length === 0 ? (
@@ -65,16 +66,36 @@ async function StatusContent({ params }: Pick<PageProps<"/status/[slug]">, "para
   );
 }
 
-function OverallBanner({ down, total }: { down: number; total: number }) {
-  if (total === 0) return null;
-  if (down === 0) {
-    return <p className="rounded-lg bg-status-up px-4 py-3 font-medium text-white">● 모든 서비스가 정상 운영 중입니다</p>;
+// Green only when every active monitor has actually been verified up. Monitors
+// that haven't had a first result yet ("pending") must not read as healthy.
+function OverallBanner({
+  down,
+  pending,
+  total,
+  hasMonitors,
+}: {
+  down: number;
+  pending: number;
+  total: number;
+  hasMonitors: boolean;
+}) {
+  const neutral = "rounded-lg bg-muted px-4 py-3 font-medium text-muted-foreground";
+  if (total === 0) return hasMonitors ? <p className={neutral}>모든 서비스가 일시정지 상태입니다</p> : null;
+  if (down > 0) {
+    return (
+      <p className="rounded-lg bg-status-down px-4 py-3 font-medium text-white">
+        ▲ {down === total ? "모든 서비스에 장애가 있습니다" : `${total}개 중 ${down}개 서비스에 장애가 있습니다`}
+      </p>
+    );
   }
-  return (
-    <p className="rounded-lg bg-status-down px-4 py-3 font-medium text-white">
-      ▲ {down === total ? "모든 서비스에 장애가 있습니다" : `${total}개 중 ${down}개 서비스에 장애가 있습니다`}
-    </p>
-  );
+  if (pending > 0) {
+    return (
+      <p className={neutral}>
+        {pending === total ? "서비스 상태를 확인하는 중입니다" : `${total}개 중 ${pending}개 서비스의 상태를 확인하는 중입니다`}
+      </p>
+    );
+  }
+  return <p className="rounded-lg bg-status-up px-4 py-3 font-medium text-white">● 모든 서비스가 정상 운영 중입니다</p>;
 }
 
 const statusLabel: Record<PublicMonitorStatus, { text: string; className: string }> = {

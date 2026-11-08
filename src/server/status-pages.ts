@@ -1,4 +1,5 @@
 import "server-only";
+import { cacheLife } from "next/cache";
 import { asc, count, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { monitorDailyStats, monitors, statusPageMonitors, statusPages } from "@/lib/db/schema";
@@ -50,13 +51,23 @@ export type PublicMonitor = {
 
 export type PublicStatusPage = { title: string; monitors: PublicMonitor[] };
 
-/** Title only, for <title>. */
+/** Title only, for <title>. Shares getPublicStatusPage's cache entry, so it adds no query. */
 export async function getStatusPageTitle(slug: string): Promise<string | null> {
-  const [p] = await db.select({ title: statusPages.title }).from(statusPages).where(eq(statusPages.slug, slug)).limit(1);
-  return p?.title ?? null;
+  return (await getPublicStatusPage(slug))?.title ?? null;
 }
 
-export async function getPublicStatusPage(slug: string, now = new Date()): Promise<PublicStatusPage | null> {
+/**
+ * The page is public and refreshes itself every 30s in every open tab, so the
+ * result is cached for a few seconds: DB load stays bounded no matter how many
+ * visitors there are. Edits made in the admin UI show up within ~15s.
+ * (revalidate/expire under 5 minutes make this a request-time "dynamic hole",
+ * so nothing is queried at build time.)
+ */
+export async function getPublicStatusPage(slug: string): Promise<PublicStatusPage | null> {
+  "use cache";
+  cacheLife({ stale: 30, revalidate: 15, expire: 60 });
+
+  const now = new Date();
   const [page] = await db
     .select({ id: statusPages.id, title: statusPages.title })
     .from(statusPages)
