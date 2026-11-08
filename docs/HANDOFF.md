@@ -1,23 +1,22 @@
 # HANDOFF
 
-_마지막 갱신: 2026-11-08 · 10단계(시간대) 끝난 뒤 코드 리뷰 3건(worker·monitor, status 페이지, 알림 발송)을 반영함_
+_마지막 갱신: 2026-11-08 · 10단계(시간대) 뒤 코드 리뷰 3건과 보안 점검(`docs/SECURITY-REVIEW.md`) 중 쉬운 항목(S-3~S-6)까지 반영함_
 
 ## 현재 상태
 - 동작함: 인증, 모니터 CRUD, 워커, 대시보드, 알림(down/recovered/ssl), SSL 만료 확인, 공개 상태 페이지, 체크 보관 기간·알림 시간대 설정, Docker 스택(`migrate` → `web` + `worker`).
 - 시간대: 웹은 `tz` 쿠키(`getViewerTimeZone()`), 이메일은 `/settings/general`의 알림 시간대, Slack은 `<!date>` 토큰. 일별 집계·공개 페이지 90일 막대·차트 버킷 기준점은 KST 고정.
-- 리뷰 반영(커밋 4aa46b9, fe195f5, 6dc7deb, 5186642):
-  - `checkOne`은 throw하지 않는다(레인이 죽어 틱이 겹치던 문제). 일시정지 중 down이던 모니터가 재개 후 성공하면 `recovered` 알림을 보낸다. `recordResult(claimed, …)`는 체크 중 URL·메서드·타임아웃·기대 상태가 바뀌었으면 결과를 버리고, 알림에는 현재 이름·URL을 쓴다.
-  - 공개 상태 페이지: 배너는 활성 모니터가 모두 up일 때만 초록(pending이면 회색 "확인 중", 전부 일시정지면 그렇게 표시). `getPublicStatusPage`는 `"use cache"`(revalidate 15초/expire 60초)라 관리자 수정이 최대 ~15초 늦게 반영된다. 제목 조회도 같은 캐시를 쓴다.
-  - 알림: `notifyMonitorEvent`는 throw하지 않고, 이유 300자·Slack 섹션 3000자 제한, SMTP 타임아웃 10s/10s/30s.
-- typecheck, lint, build, test(122개) 통과. Docker 스택을 새 이미지로 띄워 공개 페이지 배너 3가지·캐시 지연·재개 후 복구 로그를 확인했다. 실제 Slack/이메일 발송은 이번 변경분으로 확인하지 않았다.
-- 로컬 DB 테스트 데이터: 관리자 `admin@example.com` / `password1234`, 상태 페이지 `acme-status`. 지금 Docker 스택이 실행 중이다.
+- 보안 수정(커밋 8ab62c0): 모니터 URL의 `user:pass@` 거부, 이름 제어문자 거부, `channelIds` 최대 50개, compose의 db(5432)·Mailpit(1025/8025) 포트를 `127.0.0.1`에만 바인딩, 이메일 채널 테스트 실패 시 SMTP 상세 숨김.
+- typecheck, lint, build, test(127개) 통과. **compose 포트 변경은 `docker compose config`로만 확인했고 컨테이너에는 적용하지 못했다**(Docker Desktop이 꺼져 있었음). 켠 뒤 `docker compose --profile app up -d --wait`로 재생성해 `docker compose ps`에서 `127.0.0.1:` 바인딩을 확인한다.
+- 로컬 DB 테스트 데이터: 관리자 `admin@example.com` / `password1234`, 상태 페이지 `acme-status`.
 
 ## 다음 할 일
-- 아래 "미해결" 중 먼저 고칠 것을 사용자와 정한다. `PLAN.md`의 "보류·나중에 정할 것"(배포 위치, webhook 암호화, 키워드 체크, 점검 시간)도 남아 있다.
+- 보안 남은 항목을 사용자와 정한다: **S-1 SSRF**(워커 연결 단계 IP 검사, 리다이렉트 홉별 재검증, SSL 점검 포함. 내부 서비스 감시용 허용 목록 환경변수를 둘지 결정 필요), **S-2**(이메일 채널을 관리자 전용으로 할지 허용 도메인 목록을 둘지, 테스트 발송 쿨다운), P-1(로그인 속도 제한이 Server Action 경로에도 걸리는지 실제 호출로 확인), P-2~P-5.
+- `PLAN.md`의 "보류·나중에 정할 것"(배포 위치, webhook 암호화, 키워드 체크, 점검 시간)도 남아 있다.
 
 ## 미해결·결정 필요
-- 워커 리뷰: 한 틱이 최대 200개를 선점해 배치가 끝날 때까지 다음 선점을 못 한다(느린 모니터가 많으면 1분 주기가 밀림). SIGTERM 종료 대기에 기한이 없어 `docker stop` 10초를 넘기면 SIGKILL. 모니터 URL이 사설망·루프백·`user:pass@`여도 통과(SSRF 정책 결정 필요).
-- 공개 페이지: **down 상태로 비활성화한 모니터가 "일시정지"로 보여 장애가 가려진다**(마지막 상태 유지/숨김 정책 결정 필요). 워커가 죽으면 오래된 `up`이 계속 초록(`lastCheckedAt` 기준 "확인 중" 처리 필요). 없는 slug는 HTTP 200·noindex 없음.
+- S-3은 새 입력만 막는다. DB에 이미 `user:pass@` URL이 든 모니터가 있는지 점검하지 않았다. S-4는 운영용 compose 분리와 DB 비밀번호 `.env` 이동이 남음. S-6은 팀당 모니터 수 상한이 남음.
+- 워커: 한 틱이 최대 200개를 선점해 배치가 끝날 때까지 다음 선점을 못 한다. SIGTERM 종료 대기에 기한이 없어 `docker stop` 10초를 넘기면 SIGKILL.
+- 공개 페이지: **down 상태로 비활성화한 모니터가 "일시정지"로 보여 장애가 가려진다**(정책 결정 필요). 워커가 죽으면 오래된 `up`이 계속 초록(`lastCheckedAt` 기준 "확인 중" 처리 필요). 없는 slug는 HTTP 200·noindex 없음.
 - 사소: 가동률 `floor(pct*100)/100` 부동소수점 오차(`stats.ts`), `describeFetchError`에 `EHOSTUNREACH` 등 매핑 없음, "90일 전" 라벨이 실제 89일 전, `MonitorRow`의 `key={i}`, 푸터 `now`와 쿼리의 `today`가 따로, 일별 통계 쿼리가 raw SQL.
 - 기존: 사용자별 시간대 고정 없음, 6시간 차트 버킷은 KST 자정 기준, "실패 테스트" 모니터는 Docker에서 down, 보관 기간 30일 미만이면 30일 차트에 빈 구간, 알림 재시도 없음, 채널 수정 화면·비밀번호 재설정 없음.
 
