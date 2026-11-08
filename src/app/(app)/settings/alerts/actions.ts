@@ -28,15 +28,17 @@ export async function createChannelAction(_: FormState, fd: FormData): Promise<F
 
 export async function toggleChannelAction(fd: FormData) {
   await requireUser();
-  const id = z.uuid().parse(fd.get("id"));
-  await db.update(alertChannels).set({ enabled: not(alertChannels.enabled) }).where(eq(alertChannels.id, id));
+  const id = z.uuid().safeParse(fd.get("id"));
+  if (!id.success) return;
+  await db.update(alertChannels).set({ enabled: not(alertChannels.enabled) }).where(eq(alertChannels.id, id.data));
   refresh();
 }
 
 export async function deleteChannelAction(fd: FormData) {
   await requireUser();
-  const id = z.uuid().parse(fd.get("id"));
-  await db.delete(alertChannels).where(eq(alertChannels.id, id)); // monitor links cascade
+  const id = z.uuid().safeParse(fd.get("id"));
+  if (!id.success) return;
+  await db.delete(alertChannels).where(eq(alertChannels.id, id.data)); // monitor links cascade
   refresh();
 }
 

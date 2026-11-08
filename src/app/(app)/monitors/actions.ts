@@ -65,7 +65,9 @@ export async function updateMonitorAction(
   fd: FormData,
 ): Promise<MonitorFormState> {
   await requireUser();
-  const monitorId = z.uuid().parse(id);
+  const parsedId = z.uuid().safeParse(id);
+  if (!parsedId.success) return { error: "잘못된 요청입니다.", values: formValues(fd) };
+  const monitorId = parsedId.data;
   const r = parse(fd);
   if (!r.ok) return r.state;
 
@@ -93,7 +95,9 @@ export async function updateMonitorAction(
 
 export async function toggleMonitorAction(fd: FormData) {
   await requireUser();
-  const id = z.uuid().parse(fd.get("id"));
+  const parsedId = z.uuid().safeParse(fd.get("id"));
+  if (!parsedId.success) return;
+  const id = parsedId.data;
   const [m] = await db
     .update(monitors)
     .set({ enabled: not(monitors.enabled) })
@@ -111,8 +115,9 @@ export async function toggleMonitorAction(fd: FormData) {
 
 export async function deleteMonitorAction(fd: FormData) {
   await requireUser();
-  const id = z.uuid().parse(fd.get("id"));
-  await db.delete(monitors).where(eq(monitors.id, id)); // checks/incidents/channel links cascade
+  const id = z.uuid().safeParse(fd.get("id"));
+  if (!id.success) return;
+  await db.delete(monitors).where(eq(monitors.id, id.data)); // checks/incidents/channel links cascade
   if (fd.get("from") === "edit") redirect("/");
   refresh();
 }

@@ -70,7 +70,9 @@ export async function updateStatusPageAction(
   fd: FormData,
 ): Promise<StatusPageFormState> {
   await requireUser();
-  const pageId = z.uuid().parse(id);
+  const parsedId = z.uuid().safeParse(id);
+  if (!parsedId.success) return { error: "잘못된 요청입니다.", values: statusPageFormValues(fd) };
+  const pageId = parsedId.data;
   const r = parse(fd);
   if (!r.ok) return r.state;
 
@@ -96,8 +98,9 @@ export async function updateStatusPageAction(
 
 export async function deleteStatusPageAction(fd: FormData) {
   await requireUser();
-  const id = z.uuid().parse(fd.get("id"));
-  await db.delete(statusPages).where(eq(statusPages.id, id)); // monitor links cascade
+  const id = z.uuid().safeParse(fd.get("id"));
+  if (!id.success) return;
+  await db.delete(statusPages).where(eq(statusPages.id, id.data)); // monitor links cascade
   if (fd.get("from") === "edit") redirect("/settings/status-pages");
   refresh();
 }

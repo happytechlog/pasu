@@ -24,12 +24,22 @@ export async function inviteUserAction(_: FormState, fd: FormData): Promise<Form
   const [existing] = await db.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1);
   if (existing) return { error: "이미 가입된 이메일입니다." };
 
+  // Build the link before touching the DB so a misconfigured app URL does not
+  // leave a pending invitation nobody can open.
+  const { token, tokenHash } = newInviteToken();
+  let link: string;
+  try {
+    link = inviteUrl(token);
+  } catch (err) {
+    console.error("invite link failed", err);
+    return { error: "앱 주소(BETTER_AUTH_URL)가 설정되지 않아 초대 링크를 만들 수 없습니다. 서버 환경 변수를 확인하세요." };
+  }
+
   // Re-inviting replaces any pending invitation for the same address.
   await db
     .delete(invitations)
     .where(and(eq(invitations.email, email), isNull(invitations.acceptedAt)));
 
-  const { token, tokenHash } = newInviteToken();
   await db.insert(invitations).values({
     email,
     role,
@@ -39,7 +49,6 @@ export async function inviteUserAction(_: FormState, fd: FormData): Promise<Form
   });
   refresh();
 
-  const link = inviteUrl(token);
   try {
     await sendMail({
       to: email,
@@ -55,25 +64,27 @@ export async function inviteUserAction(_: FormState, fd: FormData): Promise<Form
 
 export async function cancelInvitationAction(fd: FormData) {
   await requireAdmin();
-  const id = z.string().uuid().parse(fd.get("id"));
-  await db.delete(invitations).where(and(eq(invitations.id, id), isNull(invitations.acceptedAt)));
+  const id = z.uuid().safeParse(fd.get("id"));
+  if (!id.success) return;
+  await db.delete(invitations).where(and(eq(invitations.id, id.data), isNull(invitations.acceptedAt)));
   refresh();
 }
 
 export async function deleteUserAction(fd: FormData) {
   const admin = await requireAdmin();
-  const id = z.string().min(1).parse(fd.get("id"));
-  if (id === admin.id) return; // cannot delete yourself
-  await db.delete(user).where(eq(user.id, id)); // sessions/accounts cascade
+  const id = z.string().min(1).safeParse(fd.get("id"));
+  if (!id.success || id.data === admin.id) return; // cannot delete yourself
+  await db.delete(user).where(eq(user.id, id.data)); // sessions/accounts cascade
   refresh();
 }
 
 export async function changeRoleAction(fd: FormData) {
   const admin = await requireAdmin();
-  const id = z.string().min(1).parse(fd.get("id"));
-  const role = z.enum(["admin", "member"]).parse(fd.get("role"));
-  if (id === admin.id) return; // keep at least one admin: can't demote yourself
-  await db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, id));
+  const id = z.string().min(1).safeParse(fd.get("id"));
+  const role = z.enum(["admin", "member"]).safeParse(fd.get("role"));
+  if (!id.success || !role.success) return;
+  if (id.data === admin.id) return; // keep at least one admin: can't demote yourself
+  await db.update(user).set({ role: role.data, updatedAt: new Date() }).where(eq(user.id, id.data));
   refresh();
 }
 

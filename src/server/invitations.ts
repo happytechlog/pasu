@@ -15,8 +15,14 @@ export function hashInviteToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+// Throws in production when BETTER_AUTH_URL is unset: a silent localhost
+// fallback would mail invitees a link they cannot open.
 export function inviteUrl(token: string) {
-  const base = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
+  const configured = process.env.BETTER_AUTH_URL;
+  if (!configured && process.env.NODE_ENV === "production") {
+    throw new Error("BETTER_AUTH_URL is not set");
+  }
+  const base = configured ?? "http://localhost:3000";
   return `${base.replace(/\/$/, "")}/invite/${token}`;
 }
 
