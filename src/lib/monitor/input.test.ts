@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monitorInputSchema } from "./input";
+import { MAX_CHANNELS_PER_MONITOR, monitorInputSchema } from "./input";
 
 const valid = {
   name: " API 서버 ",
@@ -34,6 +34,10 @@ describe("monitorInputSchema", () => {
     ["url", "example.com"],
     ["url", "ftp://example.com"],
     ["url", "javascript:alert(1)"],
+    ["url", "https://user:secret@example.com/"],
+    ["url", "https://user@example.com/"],
+    ["name", "evil\r\nBcc: attacker@example.com"],
+    ["name", "tab\there"],
     ["intervalSec", "120"],
     ["method", "POST"],
     ["timeoutSec", "0"],
@@ -49,5 +53,11 @@ describe("monitorInputSchema", () => {
 
   it("rejects non-uuid channel ids", () => {
     expect(monitorInputSchema.safeParse({ ...valid, channelIds: ["x"] }).success).toBe(false);
+  });
+
+  it("caps the number of linked channels", () => {
+    const ids = (n: number) => Array.from({ length: n }, () => crypto.randomUUID());
+    expect(monitorInputSchema.safeParse({ ...valid, channelIds: ids(MAX_CHANNELS_PER_MONITOR) }).success).toBe(true);
+    expect(monitorInputSchema.safeParse({ ...valid, channelIds: ids(MAX_CHANNELS_PER_MONITOR + 1) }).success).toBe(false);
   });
 });

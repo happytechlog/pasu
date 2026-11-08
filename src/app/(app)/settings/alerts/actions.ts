@@ -57,6 +57,8 @@ export async function testChannelAction(_: TestSendState, fd: FormData): Promise
     return { ok: true, message: "보냈습니다." };
   } catch (err) {
     console.error("test alert failed", c.id, err);
+    // SMTP errors carry host/IP/port and auth details; keep them in the server log, not on screen.
+    if (c.type === "email") return { ok: false, message: "발송에 실패했습니다. 서버 로그를 확인하세요." };
     return { ok: false, message: `실패: ${describeSendError(err)}` };
   }
 }

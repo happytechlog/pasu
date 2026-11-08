@@ -23,7 +23,7 @@ services:
       POSTGRES_PASSWORD: monitor
       POSTGRES_DB: monitor
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432" # loopback only: the DB account is monitor/monitor
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -36,8 +36,9 @@ services:
     image: axllent/mailpit:v1.27
     restart: unless-stopped
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # Web UI
+      # Loopback only: the Mailpit UI has no auth and shows invitation links. Don't publish these in production.
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # Web UI
 
   migrate:
     profiles: [app]

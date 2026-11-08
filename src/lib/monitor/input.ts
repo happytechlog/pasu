@@ -4,10 +4,17 @@ import { normalizeExpectedStatus } from "./expected-status";
 export const INTERVALS = [60, 300] as const;
 export const TIMEOUT_MIN_SEC = 1;
 export const TIMEOUT_MAX_SEC = 30;
+export const MAX_CHANNELS_PER_MONITOR = 50;
 
 // Validates the monitor create/edit form. Values arrive as FormData strings.
 export const monitorInputSchema = z.object({
-  name: z.string().trim().min(1, "이름을 입력하세요.").max(100, "이름은 100자 이내로 입력하세요."),
+  name: z
+    .string()
+    .trim()
+    .min(1, "이름을 입력하세요.")
+    .max(100, "이름은 100자 이내로 입력하세요.")
+    // Control characters have no place in a name that ends up in mail subjects and Slack text.
+    .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), "이름에 제어 문자를 쓸 수 없습니다."),
   url: z
     .string()
     .trim()
@@ -20,7 +27,16 @@ export const monitorInputSchema = z.object({
       } catch {
         return false;
       }
-    }, "http:// 또는 https://로 시작하는 올바른 URL을 입력하세요."),
+    }, "http:// 또는 https://로 시작하는 올바른 URL을 입력하세요.")
+    // fetch() rejects user:pass@ URLs and puts the URL (password included) in the error, which we store and send in alerts.
+    .refine((v) => {
+      try {
+        const u = new URL(v);
+        return u.username === "" && u.password === "";
+      } catch {
+        return true; // already reported by the refine above
+      }
+    }, "URL에 사용자 이름·비밀번호(user:pass@)를 넣을 수 없습니다."),
   intervalSec: z.coerce
     .number()
     .refine((v) => (INTERVALS as readonly number[]).includes(v), "체크 간격은 1분 또는 5분입니다."),
@@ -40,7 +56,7 @@ export const monitorInputSchema = z.object({
       }
       return n;
     }),
-  channelIds: z.array(z.uuid()).default([]),
+  channelIds: z.array(z.uuid()).max(MAX_CHANNELS_PER_MONITOR, "연결할 수 있는 채널 수를 넘었습니다.").default([]),
 });
 
 export type MonitorInput = z.infer<typeof monitorInputSchema>;
