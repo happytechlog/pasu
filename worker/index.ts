@@ -33,11 +33,21 @@ const PURGE_EVERY_MS = 60 * 60_000;
 
 const log = (...args: unknown[]) => console.log(new Date().toISOString(), "[worker]", ...args);
 
+// Never throws: mapLimit lanes are not isolated, so one rejection would kill a
+// lane, reject the whole batch and let the next tick overlap the survivors.
 async function checkOne(m: DueMonitor) {
+  try {
+    await checkAndNotify(m);
+  } catch (err) {
+    log(`check failed for ${m.name} (${m.id}):`, err);
+  }
+}
+
+async function checkAndNotify(m: DueMonitor) {
   const result = await runCheck(m);
   let out: RecordOutcome;
   try {
-    out = await recordResult(m.id, result);
+    out = await recordResult(m, result);
   } catch (err) {
     log(`failed to record result for ${m.name} (${m.id}):`, err);
     return;
@@ -45,19 +55,20 @@ async function checkOne(m: DueMonitor) {
   if (out.skipped || !out.event) return;
 
   // Alerts go out after the transaction has committed; a failed send never
-  // affects the stored check or the status transition.
-  const monitor = { id: m.id, name: m.name, url: m.url };
+  // affects the stored check or the status transition. Name/url are the
+  // current ones (the monitor may have been renamed while the check ran).
+  const monitor = { id: m.id, name: out.name, url: out.url };
   const now = new Date();
   let results;
   if (out.event === "down") {
-    log(`DOWN ${m.name} — ${m.url} · 원인: ${result.error}`);
+    log(`DOWN ${out.name} — ${out.url} · 원인: ${result.error}`);
     results = await notifyMonitorEvent({ kind: "down", monitor, reason: result.error, at: now });
   } else {
     const downtimeMs = out.incidentStartedAt ? now.getTime() - out.incidentStartedAt.getTime() : null;
-    log(`UP ${m.name} 복구${downtimeMs !== null ? ` — 다운 시간 ${formatDuration(downtimeMs)}` : ""}`);
+    log(`UP ${out.name} 복구${downtimeMs !== null ? ` — 다운 시간 ${formatDuration(downtimeMs)}` : ""}`);
     results = await notifyMonitorEvent({ kind: "recovered", monitor, downtimeMs, at: now });
   }
-  logSendResults(m.name, results);
+  logSendResults(out.name, results);
 }
 
 function logSendResults(monitorName: string, results: SendResult[]) {
@@ -67,6 +78,7 @@ function logSendResults(monitorName: string, results: SendResult[]) {
   }
 }
 
+// Also must not throw (see checkOne); the notify call at the end is guarded.
 async function sslCheckOne(m: SslDueMonitor) {
   let expiresAt: Date;
   try {

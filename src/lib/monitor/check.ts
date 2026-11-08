@@ -7,6 +7,13 @@ export type CheckTarget = {
   expectedStatus: string;
 };
 
+/** True if both targets would run the same request and judge it the same way. */
+export function sameCheckTarget(a: CheckTarget, b: CheckTarget): boolean {
+  return (
+    a.url === b.url && a.method === b.method && a.timeoutMs === b.timeoutMs && a.expectedStatus === b.expectedStatus
+  );
+}
+
 export type CheckResult = {
   ok: boolean;
   statusCode: number | null;

@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { checks, incidents, monitorDailyStats, monitors, sslAlertsSent } from "../db/schema";
-import type { CheckResult } from "./check";
+import { sameCheckTarget, type CheckResult } from "./check";
 import { SSL_CHECK_INTERVAL_MS, SSL_RETRY_AFTER_MS } from "./ssl";
 import { nextState, type TransitionResult } from "./state";
 
@@ -53,21 +53,35 @@ export async function claimDueMonitors(limit: number): Promise<DueMonitor[]> {
 
 export type RecordOutcome =
   | { skipped: true }
-  | ({ skipped: false; incidentStartedAt: Date | null } & TransitionResult);
+  | ({ skipped: false; incidentStartedAt: Date | null; name: string; url: string } & TransitionResult);
 
 /**
  * Stores a check and applies the status transition in one transaction.
  * The monitor row is re-read under lock, so a pause/resume/delete made while
- * the request was in flight wins over the stale claim.
+ * the request was in flight wins over the stale claim. If the monitor's request
+ * settings were edited meanwhile, the result belongs to the old settings and is
+ * dropped (the edit already scheduled a fresh check). The returned name/url are
+ * the current ones, for alerts.
  */
-export async function recordResult(monitorId: string, result: CheckResult, checkedAt = new Date()): Promise<RecordOutcome> {
+export async function recordResult(claimed: DueMonitor, result: CheckResult, checkedAt = new Date()): Promise<RecordOutcome> {
+  const monitorId = claimed.id;
   return db.transaction(async (tx) => {
     const [m] = await tx
-      .select({ enabled: monitors.enabled, status: monitors.status, consecutiveFailures: monitors.consecutiveFailures })
+      .select({
+        enabled: monitors.enabled,
+        status: monitors.status,
+        consecutiveFailures: monitors.consecutiveFailures,
+        name: monitors.name,
+        url: monitors.url,
+        method: monitors.method,
+        timeoutMs: monitors.timeoutMs,
+        expectedStatus: monitors.expectedStatus,
+      })
       .from(monitors)
       .where(eq(monitors.id, monitorId))
       .for("update");
     if (!m || !m.enabled) return { skipped: true } as const;
+    if (!sameCheckTarget(claimed, m)) return { skipped: true } as const;
 
     await tx.insert(checks).values({
       monitorId,
@@ -120,8 +134,12 @@ export async function recordResult(monitorId: string, result: CheckResult, check
         .where(and(eq(incidents.monitorId, monitorId), isNull(incidents.resolvedAt)))
         .returning({ startedAt: incidents.startedAt });
       incidentStartedAt = closed?.startedAt ?? null;
+      // A monitor paused while down comes back as pending with its incident
+      // still open (and its DOWN alert already sent): still tell the channels
+      // it recovered.
+      if (closed && event === null) event = "recovered";
     }
-    return { skipped: false, incidentStartedAt, ...t, event };
+    return { skipped: false, incidentStartedAt, name: m.name, url: m.url, ...t, event };
   });
 }
 

@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import { describeFetchError, runCheck, type CheckTarget } from "./check";
+import { describeFetchError, runCheck, sameCheckTarget, type CheckTarget } from "./check";
 
 const target: CheckTarget = { url: "https://example.com", method: "GET", timeoutMs: 1000, expectedStatus: "2xx" };
+
+describe("sameCheckTarget", () => {
+  it("is true only when url, method, timeout and expected status all match", () => {
+    expect(sameCheckTarget(target, { ...target })).toBe(true);
+    expect(sameCheckTarget(target, { ...target, url: "https://example.org" })).toBe(false);
+    expect(sameCheckTarget(target, { ...target, method: "HEAD" })).toBe(false);
+    expect(sameCheckTarget(target, { ...target, timeoutMs: 2000 })).toBe(false);
+    expect(sameCheckTarget(target, { ...target, expectedStatus: "200" })).toBe(false);
+  });
+});
 
 function respond(status: number) {
   return vi.fn(async () => new Response(status === 204 || status === 304 ? null : "body", { status }));
