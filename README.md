@@ -28,10 +28,20 @@ docker compose --profile app up -d --build --wait
 - 컨테이너 워커 안에서 `localhost`는 워커 자신이다. `http://localhost:3000/...`처럼 호스트 PC를 가리키는 모니터는 Docker 스택에서 down이 된다. 같은 compose의 웹을 체크하려면 `http://web:3000/...`을 쓴다.
 - 로컬 dev 서버·워커(`npm run dev`, `npm run worker`)와 동시에 띄우지 않는다. 포트 3000이 충돌하고 같은 DB 볼륨을 쓰므로 워커 두 개가 함께 체크한다.
 
-### 외부에 공개할 때
-- HTTPS 리버스 프록시(nginx, Caddy 등) 뒤에 둔다. 웹 컨테이너는 HTTP만 제공한다.
-- `BETTER_AUTH_URL`을 실제 주소로 바꾼다(초대 링크와 알림 링크에 쓰인다).
-- Postgres 계정이 `docker-compose.yml`에 `monitor/monitor`로 고정돼 있고 5432 포트가 열려 있다. 비밀번호를 바꾸고(`db`의 `POSTGRES_PASSWORD`와 앱의 `DATABASE_URL`을 함께 바꿔야 함) 포트 노출을 없앤다.
+### 외부에 공개할 때 (운영용 compose)
+`docker-compose.yml`은 개발용이다(DB 비밀번호 기본값 `monitor`, Mailpit 포함). 운영에는 `docker-compose.prod.yml`을 쓴다.
+
+```bash
+# .env에 POSTGRES_PASSWORD, BETTER_AUTH_SECRET, BETTER_AUTH_URL, SMTP_HOST, SMTP_FROM을 채운 뒤
+docker compose -f docker-compose.prod.yml up -d --build --wait
+```
+
+- 위 값 중 하나라도 비어 있으면 compose가 시작 전에 오류로 알려 준다. 기본 비밀번호로 올라가는 일이 없다.
+- DB 포트와 Mailpit은 공개하지 않는다. 웹은 `127.0.0.1:3000`(`WEB_BIND`, `WEB_PORT`)에만 열리므로 HTTPS 리버스 프록시(nginx, Caddy 등)를 앞에 둔다. 웹 컨테이너는 HTTP만 제공한다.
+- `BETTER_AUTH_URL`을 실제 https 주소로 쓴다(초대 링크와 알림 링크에 쓰인다).
+- `POSTGRES_PASSWORD`는 `DATABASE_URL`에 그대로 들어가므로 URL에 안전한 문자만 쓴다(`openssl rand -hex 24`). 비밀번호는 DB 볼륨을 **처음 만들 때만** 적용된다. 이미 만든 뒤에 바꾸려면 db 컨테이너에서 `ALTER USER monitor PASSWORD '…'`를 실행하고 `.env`도 함께 바꾼다.
+- 프로젝트 이름이 `pasu`라서 볼륨(`pasu_pgdata`)이 개발용(`simple_monitoring_pgdata`)과 분리된다. 개발 DB를 운영에 옮기지 않는다.
+- 사설망 서비스를 감시하려면 `MONITOR_ALLOWED_NETWORKS`에 감시할 대역만 적는다(`.env.example` 참고).
 
 ## 알림 설정
 

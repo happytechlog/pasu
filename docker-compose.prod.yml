@@ -1,0 +1,74 @@
+# Production stack: db + migrate (one-shot) + web + worker. No Mailpit, no published DB port.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build --wait
+#
+# Everything secret comes from .env (see .env.example) and is REQUIRED here: compose stops with
+# an error instead of starting with a default. `name: pasu` keeps this stack's volume
+# (pasu_pgdata) separate from the development stack's (simple_monitoring_pgdata).
+#
+# The web container serves plain HTTP and is published on loopback only (WEB_BIND=127.0.0.1);
+# put an HTTPS reverse proxy in front of it. Set WEB_BIND=0.0.0.0 only if nothing else is in front.
+#
+# POSTGRES_PASSWORD is placed in DATABASE_URL as-is, so use URL-safe characters
+# (e.g. `openssl rand -hex 24`). The password is only applied when the database volume is first
+# created; changing it later needs `ALTER USER monitor PASSWORD '...'` inside the db container.
+
+name: pasu
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://monitor:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/monitor
+  SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:?set BETTER_AUTH_URL in .env (the public https:// address)}
+  MONITOR_ALLOWED_NETWORKS: ${MONITOR_ALLOWED_NETWORKS:-}
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: monitor
+    # No "ports": only the other services on this compose network can reach the database.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitor -d monitor"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: { context: ., target: worker }
+    image: pasu-worker
+    command: ["node", "migrate.mjs"]
+    environment: *app-env
+    depends_on:
+      db: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    image: pasu-web
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    image: pasu-worker
+    restart: unless-stopped
+    environment: *app-env
+    stop_grace_period: 30s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:

@@ -4,9 +4,11 @@
 # The app services read BETTER_AUTH_SECRET etc. from .env via interpolation;
 # DATABASE_URL is overridden to point at the db service. SMTP_HOST/SMTP_PORT come from .env
 # (default: the mailpit service). Note: inside a container "localhost" is the container itself.
+# This is the DEVELOPMENT stack: the DB password defaults to "monitor" so it starts without a .env.
+# For production use docker-compose.prod.yml, which requires every secret.
 
 x-app-env: &app-env
-  DATABASE_URL: postgres://monitor:monitor@db:5432/monitor
+  DATABASE_URL: postgres://monitor:${POSTGRES_PASSWORD:-monitor}@db:5432/monitor
   SMTP_HOST: ${SMTP_HOST:-mailpit}
   SMTP_PORT: ${SMTP_PORT:-1025}
   SMTP_USER: ${SMTP_USER:-}
@@ -21,10 +23,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: monitor
-      POSTGRES_PASSWORD: monitor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-monitor}
       POSTGRES_DB: monitor
     ports:
-      - "127.0.0.1:5432:5432" # loopback only: the DB account is monitor/monitor
+      - "127.0.0.1:5432:5432" # loopback only: the dev DB password is a well-known default
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

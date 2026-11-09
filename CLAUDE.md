@@ -32,6 +32,7 @@ npm run db:migrate            # 마이그레이션 적용
 npm run db:studio
 npm run worker:build          # esbuild로 dist/worker/{index,migrate}.mjs 번들 (Docker worker 이미지용)
 docker compose --profile app up -d --build --wait   # 전체 스택: migrate(1회) → web(:3000) + worker. 로컬 dev 서버/워커와 동시에 띄우지 않는다
+docker compose -f docker-compose.prod.yml up -d --build --wait   # 운영용: 비밀값(POSTGRES_PASSWORD 등)이 .env에 없으면 시작 전에 실패, DB·Mailpit 포트 없음, 프로젝트명 pasu(볼륨 분리)
 ```
 
 ## Next.js 16 주의사항
