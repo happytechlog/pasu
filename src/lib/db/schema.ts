@@ -179,6 +179,8 @@ export const alertChannels = pgTable("alert_channels", {
   name: text("name").notNull(),
   target: text("target").notNull(), // Slack webhook URL or email address
   enabled: boolean("enabled").notNull().default(true),
+  // Last "테스트 발송" click; limits how often a channel can be test-sent (see notify/policy.ts).
+  lastTestAt: timestamp("last_test_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

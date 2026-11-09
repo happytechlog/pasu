@@ -1,0 +1,1 @@
+ALTER TABLE "alert_channels" ADD COLUMN "last_test_at" timestamp with time zone;

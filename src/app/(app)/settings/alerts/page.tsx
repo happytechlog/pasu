@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { db } from "@/lib/db";
 import { alertChannels, monitorAlertChannels } from "@/lib/db/schema";
 import { maskSecret } from "@/lib/notify/message";
+import { canCreateChannel, TEST_SEND_COOLDOWN_SEC } from "@/lib/notify/policy";
 import { requireUser } from "@/server/session";
 import { ConfirmSubmit } from "../../monitors/confirm-submit";
 import { createChannelAction, deleteChannelAction, testChannelAction, toggleChannelAction } from "./actions";
@@ -29,7 +30,8 @@ export default function AlertChannelsPage() {
 }
 
 async function AlertChannelsContent() {
-  await requireUser();
+  const user = await requireUser();
+  const canAddEmail = canCreateChannel(user.role, "email");
   const rows = await db
     .select({
       id: alertChannels.id,
@@ -59,8 +61,13 @@ async function AlertChannelsContent() {
               <Label htmlFor="type">종류</Label>
               <select id="type" name="type" defaultValue="slack" className="h-8 rounded-lg border bg-transparent px-2 text-sm">
                 <option value="slack">Slack (Incoming Webhook)</option>
-                <option value="email">이메일</option>
+                {canAddEmail && <option value="email">이메일</option>}
               </select>
+              {!canAddEmail && (
+                <p className="text-xs text-muted-foreground">
+                  이메일 채널은 관리자만 추가할 수 있습니다. 이미 있는 채널은 모니터에 연결해 쓸 수 있습니다.
+                </p>
+              )}
             </div>
             <Field label="이름" id="name" required maxLength={50} placeholder="예: 운영팀 Slack" />
             <Field
@@ -68,7 +75,7 @@ async function AlertChannelsContent() {
               id="target"
               required
               autoComplete="off"
-              placeholder="https://hooks.slack.com/services/… 또는 ops@example.com"
+              placeholder={canAddEmail ? "https://hooks.slack.com/services/… 또는 ops@example.com" : "https://hooks.slack.com/services/…"}
             />
           </ActionForm>
         </CardContent>
@@ -77,7 +84,9 @@ async function AlertChannelsContent() {
       <Card>
         <CardHeader>
           <CardTitle>채널 ({rows.length})</CardTitle>
-          <CardDescription>Slack webhook URL은 보안을 위해 끝 4자리만 표시합니다.</CardDescription>
+          <CardDescription>
+            Slack webhook URL은 보안을 위해 끝 4자리만 표시합니다. 테스트 발송은 채널당 {TEST_SEND_COOLDOWN_SEC}초에 한 번만 보낼 수 있습니다.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {rows.length === 0 ? (

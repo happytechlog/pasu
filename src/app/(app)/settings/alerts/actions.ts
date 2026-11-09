@@ -1,25 +1,34 @@
 "use server";
 
 import { refresh } from "next/cache";
-import { eq, not } from "drizzle-orm";
+import { and, eq, isNull, lte, not, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { FormState } from "@/components/action-form";
 import { db } from "@/lib/db";
 import { alertChannels } from "@/lib/db/schema";
 import { buildAlert, sendToChannel, describeSendError } from "@/lib/notify";
 import { channelInputSchema } from "@/lib/notify/input";
+import {
+  canCreateChannel,
+  EMAIL_CHANNEL_ADMIN_ONLY_MESSAGE,
+  TEST_SEND_COOLDOWN_SEC,
+  testSendWaitSec,
+} from "@/lib/notify/policy";
 import { requireUser } from "@/server/session";
 
-// Alert channels are shared by the whole team: any signed-in user can manage them.
+// Alert channels are shared by the whole team: any signed-in user can use, switch off and delete
+// them. Email channels can only be created by admins (they relay mail through the team's SMTP
+// account), and each channel can be test-sent once per TEST_SEND_COOLDOWN_SEC.
 
 export async function createChannelAction(_: FormState, fd: FormData): Promise<FormState> {
-  await requireUser();
+  const user = await requireUser();
   const parsed = channelInputSchema.safeParse({
     type: fd.get("type"),
     name: fd.get("name"),
     target: fd.get("target"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!canCreateChannel(user.role, parsed.data.type)) return { error: EMAIL_CHANNEL_ADMIN_ONLY_MESSAGE };
 
   await db.insert(alertChannels).values(parsed.data);
   refresh();
@@ -49,8 +58,31 @@ export async function testChannelAction(_: TestSendState, fd: FormData): Promise
   const id = z.uuid().safeParse(fd.get("id"));
   if (!id.success) return { ok: false, message: "잘못된 요청입니다." };
 
-  const [c] = await db.select().from(alertChannels).where(eq(alertChannels.id, id.data)).limit(1);
-  if (!c) return { ok: false, message: "채널을 찾을 수 없습니다." };
+  // Claim the test slot atomically so concurrent clicks can't all pass the cooldown check.
+  // A failed send still uses it, which also keeps a broken SMTP server from being hammered.
+  const [c] = await db
+    .update(alertChannels)
+    .set({ lastTestAt: sql`now()` })
+    .where(
+      and(
+        eq(alertChannels.id, id.data),
+        or(
+          isNull(alertChannels.lastTestAt),
+          lte(alertChannels.lastTestAt, sql`now() - make_interval(secs => ${TEST_SEND_COOLDOWN_SEC})`),
+        ),
+      ),
+    )
+    .returning();
+  if (!c) {
+    const [existing] = await db
+      .select({ lastTestAt: alertChannels.lastTestAt })
+      .from(alertChannels)
+      .where(eq(alertChannels.id, id.data))
+      .limit(1);
+    if (!existing) return { ok: false, message: "채널을 찾을 수 없습니다." };
+    const wait = Math.max(1, testSendWaitSec(existing.lastTestAt));
+    return { ok: false, message: `테스트 발송은 채널당 ${TEST_SEND_COOLDOWN_SEC}초에 한 번만 가능합니다. ${wait}초 후 다시 시도하세요.` };
+  }
 
   try {
     await sendToChannel(c, await buildAlert({ kind: "test", channelName: c.name, at: new Date() }));
