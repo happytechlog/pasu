@@ -21,6 +21,7 @@ cp .env.example .env          # 최초 1회
 npm run dev                   # 웹 http://localhost:3000
 npm run worker                # 워커(watch 모드). watch 없이 실행: npm run worker:start
 # 개발용 체크 대상(프로덕션은 404): /api/test/fail?status=503, /api/test/slow?ms=15000
+#   localhost는 사설 주소라서 .env에 MONITOR_ALLOWED_NETWORKS=127.0.0.0/8,::1/128 이 있고 관리자가 모니터를 저장해야 체크된다
 npm run typecheck             # next typegen 후 tsc (LayoutProps 등 라우트 타입은 생성된 것이라 typegen이 필요)
 npm run lint
 npm run build                 # Cache Components 검증이 빌드 때 모든 라우트에 대해 실행됨
@@ -47,6 +48,7 @@ docker compose --profile app up -d --build --wait   # 전체 스택: migrate(1�
   - `src/lib/db/`: Drizzle 클라이언트(개발 중 핫리로드를 위해 pg Pool을 `globalThis`에 캐시)와 스키마
   - `src/lib/mail.ts`: nodemailer 발송(초대 메일, 이후 이메일 알림)
   - `src/lib/monitor/`: `check.ts`(HTTP 체크, 순수), `state.ts`(상태 전이, 순수), `runner.ts`(워커의 DB 처리: 대상 선점·결과 기록·incident), `expected-status.ts`, `input.ts`(폼 zod 스키마), `stats.ts`(가동률·차트 버킷·SSL 일수·기간 포맷, 순수), `ssl.ts`(알림 임계값 판정·`tls.connect` 만료일 조회). 순수 함수는 단위 테스트한다
+  - **접속 대상 정책(SSRF 방어)**: `network.ts`(순수: 주소 분류 `classifyAddress`=blocked/private/public, `MONITOR_ALLOWED_NETWORKS` 파싱, `createSafeLookup`), `safe-fetch.ts`(워커 전용: undici 커넥터로 연결 시점에 검사하는 `fetchFor(allowPrivate)`), `target.ts`(등록 시점 검사 `checkMonitorTarget`). 링크로컬·메타데이터(169.254/16 등)는 항상 차단. 사설·루프백 주소는 모니터의 `allow_private`가 true **이고** 주소가 `MONITOR_ALLOWED_NETWORKS`(CIDR 목록, 기본 빈 값) 안일 때만 허용. 사설 주소를 가리키는 URL은 관리자만 저장할 수 있고(`monitors/actions.ts`) 저장 시 `allow_private`가 정해진다. 워커는 DNS 결과의 모든 주소를 검사하고 리다이렉트 홉도 같은 커넥터를 지난다. SSL 점검(`fetchCertExpiry`)도 같은 정책이다. 새 외부 요청 코드를 추가하면 `fetchFor`를 쓴다
   - `src/lib/settings.ts`: 팀 전체 설정(`app_settings` 한 행, id=1). `getSettings`(행이 없으면 기본값), `saveSettings`(넘긴 필드만 갱신), 폼 zod. 체크 보관 기간(기본 30일, 7~365일)과 알림 시간대(기본 `Asia/Seoul`)가 있다
   - `src/lib/timezone.ts`: 시간대 검증·정규화(`normalizeTimeZone`), 메모이즈한 `dateTimeFormat`, 약칭(`timeZoneLabel`: 서울은 "KST", 그 외 PST/PDT 등). **화면에 시각을 쓸 때 `timeZone: "Asia/Seoul"`을 직접 넣지 않는다.** 웹은 `getViewerTimeZone()`(`src/server/timezone.ts`, 루트 레이아웃의 `<TimeZoneSync>`가 브라우저 시간대를 `tz` 쿠키에 저장, 없으면 KST), 알림은 설정의 알림 시간대를 쓴다. 일별 집계(`monitor_daily_stats`, `kstDay`, 차트 버킷 기준점)만 KST 고정이다
   - `src/lib/status-page/input.ts`: 상태 페이지 폼 zod(slug는 영문 소문자·숫자·하이픈 1~40자)
