@@ -1,6 +1,7 @@
 import { isIP } from "node:net";
 import tls from "node:tls";
 import { describeFetchError } from "./check";
+import { assertLiteralAllowed, createSafeLookup, STRICT_POLICY, type NetworkPolicy } from "./network";
 
 // SSL certificate expiry. The decision helpers are pure and unit-tested;
 // fetchCertExpiry does the TLS handshake. Shared lib code: no Next/React imports.
@@ -57,17 +58,25 @@ export function describeSslError(err: unknown): string {
 /**
  * Connects to the URL's host and returns the leaf certificate's expiry.
  * Verification is off on purpose: expired or otherwise invalid certificates
- * must still be readable so we can report them.
+ * must still be readable so we can report them. The connection obeys the
+ * same network policy as HTTP checks (public targets only by default).
  */
-export function fetchCertExpiry(url: string, timeoutMs = 10_000): Promise<Date> {
+export function fetchCertExpiry(url: string, timeoutMs = 10_000, policy: NetworkPolicy = STRICT_POLICY): Promise<Date> {
   const u = new URL(url);
   const host = u.hostname.replace(/^\[|\]$/g, ""); // IPv6 literals come bracketed
   const port = u.port ? Number(u.port) : 443;
 
   return new Promise((resolve, reject) => {
+    try {
+      assertLiteralAllowed(host, policy); // lookup() isn't called for IP literals
+    } catch (err) {
+      reject(err);
+      return;
+    }
     const socket = tls.connect({
       host,
       port,
+      lookup: createSafeLookup(policy),
       servername: isIP(host) ? undefined : host, // SNI must not be an IP
       rejectUnauthorized: false,
       timeout: timeoutMs,

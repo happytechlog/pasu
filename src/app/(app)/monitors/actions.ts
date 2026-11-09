@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { alertChannels, monitorAlertChannels, monitors } from "@/lib/db/schema";
 import { formValues, monitorInputSchema, type MonitorFormValues, type MonitorInput } from "@/lib/monitor/input";
+import { checkMonitorTarget } from "@/lib/monitor/target";
 import { requireUser } from "@/server/session";
 
 export type MonitorFormState = { error?: string; values?: MonitorFormValues } | undefined;
@@ -48,11 +49,14 @@ export async function createMonitorAction(_: MonitorFormState, fd: FormData): Pr
   const user = await requireUser();
   const r = parse(fd);
   if (!r.ok) return r.state;
+  // Private targets are admin-only (see checkMonitorTarget); the flag lets the worker connect to them.
+  const target = await checkMonitorTarget(r.data.url, user.role === "admin");
+  if (!target.ok) return { error: target.message, values: formValues(fd) };
 
   await db.transaction(async (tx) => {
     const [m] = await tx
       .insert(monitors)
-      .values({ ...columns(r.data), createdBy: user.id })
+      .values({ ...columns(r.data), allowPrivate: target.private, createdBy: user.id })
       .returning({ id: monitors.id });
     await setChannels(tx, m.id, r.data.channelIds);
   });
@@ -64,12 +68,27 @@ export async function updateMonitorAction(
   _: MonitorFormState,
   fd: FormData,
 ): Promise<MonitorFormState> {
-  await requireUser();
+  const user = await requireUser();
   const parsedId = z.uuid().safeParse(id);
   if (!parsedId.success) return { error: "잘못된 요청입니다.", values: formValues(fd) };
   const monitorId = parsedId.data;
   const r = parse(fd);
   if (!r.ok) return r.state;
+
+  const [existing] = await db
+    .select({ url: monitors.url, allowPrivate: monitors.allowPrivate })
+    .from(monitors)
+    .where(eq(monitors.id, monitorId));
+  if (!existing) return { error: "모니터를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.", values: formValues(fd) };
+  // A member may edit other fields of an admin's private monitor as long as the URL stays the same.
+  let allowPrivate: boolean;
+  if (user.role !== "admin" && existing.allowPrivate && existing.url === r.data.url) {
+    allowPrivate = true;
+  } else {
+    const target = await checkMonitorTarget(r.data.url, user.role === "admin");
+    if (!target.ok) return { error: target.message, values: formValues(fd) };
+    allowPrivate = target.private;
+  }
 
   const found = await db.transaction(async (tx) => {
     // Check again soon so changed settings take effect without waiting a full interval.
@@ -77,6 +96,7 @@ export async function updateMonitorAction(
       .update(monitors)
       .set({
         ...columns(r.data),
+        allowPrivate,
         nextCheckAt: new Date(),
         // A different URL may mean a different certificate (or none): forget
         // the old one so the worker reads it again on its next SSL pass.

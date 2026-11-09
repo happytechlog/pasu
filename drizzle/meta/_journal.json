@@ -57,6 +57,13 @@
       "when": 1793602760670,
       "tag": "0007_alert_time_zone",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794183644434,
+      "tag": "0008_shiny_menace",
+      "breakpoints": true
     }
   ]
 }

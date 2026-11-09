@@ -1,4 +1,5 @@
 import { matchesExpectedStatus, parseExpectedStatus } from "./expected-status";
+import { BLOCKED_ADDRESS_CODE } from "./network";
 
 export type CheckTarget = {
   url: string;
@@ -41,6 +42,8 @@ export function describeFetchError(err: unknown, timedOut: boolean, timeoutMs: n
     case "ENOTFOUND":
     case "EAI_AGAIN":
       return "DNS 조회 실패";
+    case BLOCKED_ADDRESS_CODE:
+      return "허용되지 않은 주소 (사설망·내부 주소)";
     case "ECONNREFUSED":
       return "연결 거부됨";
     case "ECONNRESET":

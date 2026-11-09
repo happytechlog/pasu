@@ -13,6 +13,7 @@ x-app-env: &app-env
   SMTP_PASS: ${SMTP_PASS:-}
   SMTP_FROM: ${SMTP_FROM:-Pasu Monitor <alerts@localhost>}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  MONITOR_ALLOWED_NETWORKS: ${MONITOR_ALLOWED_NETWORKS:-}
 
 services:
   db:

@@ -2,6 +2,8 @@ import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../src/lib/db";
 import { runCheck } from "../src/lib/monitor/check";
+import { allowedNetworksFromEnv, policyFor } from "../src/lib/monitor/network";
+import { fetchFor } from "../src/lib/monitor/safe-fetch";
 import {
   claimDueMonitors,
   claimSslAlert,
@@ -44,7 +46,7 @@ async function checkOne(m: DueMonitor) {
 }
 
 async function checkAndNotify(m: DueMonitor) {
-  const result = await runCheck(m);
+  const result = await runCheck(m, fetchFor(m.allowPrivate));
   let out: RecordOutcome;
   try {
     out = await recordResult(m, result);
@@ -82,7 +84,7 @@ function logSendResults(monitorName: string, results: SendResult[]) {
 async function sslCheckOne(m: SslDueMonitor) {
   let expiresAt: Date;
   try {
-    expiresAt = await fetchCertExpiry(m.url, SSL_TIMEOUT_MS);
+    expiresAt = await fetchCertExpiry(m.url, SSL_TIMEOUT_MS, policyFor(m.allowPrivate));
   } catch (err) {
     log(`ssl lookup failed for ${m.name} (${m.url}): ${describeSslError(err)}`);
     await markSslRetry(m.id).catch((e) => log(`failed to schedule ssl retry for ${m.name}:`, e));
@@ -162,6 +164,9 @@ async function purge() {
 async function main() {
   await db.execute(sql`select 1`);
   log(`started: tick ${TICK_MS / 1000}s, concurrency ${CONCURRENCY}; ssl every ${SSL_TICK_MS / 1000}s`);
+  const allowed = allowedNetworksFromEnv();
+  log(`private targets: ${process.env.MONITOR_ALLOWED_NETWORKS?.trim() || "none (MONITOR_ALLOWED_NETWORKS is empty)"}`);
+  if (allowed.invalid.length > 0) log(`ignoring invalid MONITOR_ALLOWED_NETWORKS entries: ${allowed.invalid.join(", ")}`);
 
   const run = () => {
     if (!running) inFlight = tick(); // keep the running tick's promise for shutdown

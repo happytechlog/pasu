@@ -119,6 +119,9 @@ export const monitors = pgTable(
     // Parsed by src/lib/monitor/expected-status.ts.
     expectedStatus: text("expected_status").notNull().default("2xx"),
     enabled: boolean("enabled").notNull().default(true),
+    // Set when an admin saved a target that resolves to a private address. The worker only
+    // connects to private addresses (inside MONITOR_ALLOWED_NETWORKS) for monitors with this flag.
+    allowPrivate: boolean("allow_private").notNull().default(false),
     status: monitorStatus("status").notNull().default("pending"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),

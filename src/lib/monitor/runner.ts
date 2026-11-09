@@ -14,6 +14,7 @@ export type DueMonitor = {
   method: "GET" | "HEAD";
   timeoutMs: number;
   expectedStatus: string;
+  allowPrivate: boolean;
 };
 
 /**
@@ -29,6 +30,7 @@ export async function claimDueMonitors(limit: number): Promise<DueMonitor[]> {
     method: "GET" | "HEAD";
     timeout_ms: number;
     expected_status: string;
+    allow_private: boolean;
   }>(sql`
     update ${monitors} m
        set next_check_at = now() + make_interval(secs => m.interval_sec)
@@ -39,7 +41,7 @@ export async function claimDueMonitors(limit: number): Promise<DueMonitor[]> {
         limit ${limit}
         for update skip locked
      )
-    returning m.id, m.name, m.url, m.method, m.timeout_ms, m.expected_status
+    returning m.id, m.name, m.url, m.method, m.timeout_ms, m.expected_status, m.allow_private
   `);
   return rows.map((r) => ({
     id: r.id,
@@ -48,6 +50,7 @@ export async function claimDueMonitors(limit: number): Promise<DueMonitor[]> {
     method: r.method,
     timeoutMs: r.timeout_ms,
     expectedStatus: r.expected_status,
+    allowPrivate: r.allow_private,
   }));
 }
 
@@ -147,14 +150,14 @@ export async function recordResult(claimed: DueMonitor, result: CheckResult, che
 // SSL (once a day per enabled https monitor)
 // ---------------------------------------------------------------------------
 
-export type SslDueMonitor = { id: string; name: string; url: string };
+export type SslDueMonitor = { id: string; name: string; url: string; allowPrivate: boolean };
 
 /**
  * Claims enabled https monitors whose certificate hasn't been read in the last
  * day, stamping sslCheckedAt so other ticks/workers skip them.
  */
 export async function claimSslDue(limit: number): Promise<SslDueMonitor[]> {
-  const { rows } = await db.execute<SslDueMonitor>(sql`
+  const { rows } = await db.execute<{ id: string; name: string; url: string; allow_private: boolean }>(sql`
     update ${monitors} m
        set ssl_checked_at = now()
      where m.id in (
@@ -166,9 +169,9 @@ export async function claimSslDue(limit: number): Promise<SslDueMonitor[]> {
         limit ${limit}
         for update skip locked
      )
-    returning m.id, m.name, m.url
+    returning m.id, m.name, m.url, m.allow_private
   `);
-  return rows;
+  return rows.map((r) => ({ id: r.id, name: r.name, url: r.url, allowPrivate: r.allow_private }));
 }
 
 /** Stores the certificate expiry read from the server. */
