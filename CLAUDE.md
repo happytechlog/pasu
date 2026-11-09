@@ -64,7 +64,7 @@ docker compose --profile app up -d --build --wait   # 전체 스택: migrate(1�
 
 ## 확정된 제품 결정
 - 공개 가입 없음. 사용자가 0명일 때 `/setup`에서 첫 관리자를 만들고, 이후에는 관리자가 보낸 초대 링크(`/invite/[token]`, 7일 유효)로만 가입한다. 인증은 Better Auth(이메일+비밀번호)이고, auth 테이블은 2단계에서 추가한다. 그때 `monitors.createdBy`에 user FK를 연결한다.
-- **팀 전체 공유**: 모니터와 알림 채널에 사용자별 소유 구분이 없다.
+- **팀 전체 공유**: 모니터와 알림 채널에 사용자별 소유 구분이 없다. 예외: **이메일 채널은 관리자만 만들 수 있고**(팀 SMTP로 임의 주소에 보내는 릴레이를 막기 위해), 사설 주소를 가리키는 모니터도 관리자만 저장할 수 있다. 채널 켜기·끄기·삭제와 모니터 연결은 멤버도 가능하다. 알림 채널 "테스트 발송"은 채널당 60초에 한 번(`alert_channels.last_test_at`, `src/lib/notify/policy.ts`).
 - 보호 경로: `/status/*`, `/login`, `/setup`, `/invite/*`를 뺀 모든 경로. 공개 상태 페이지에는 URL과 에러 상세를 노출하지 않는다. 공개 페이지(`src/app/status/[slug]`, 라우트 그룹 밖이라 헤더 없음)는 조회 쿼리에서 그런 컬럼을 아예 select하지 않는 방식으로 지킨다.
 - 설정값 위치: SMTP 서버, DB, 인증 시크릿은 `.env`(`.env.example`만 커밋). 체크 보관 기간과 알림 시간대처럼 팀이 운영 중에 바꾸는 값은 관리자 전용 `/settings/general`에서 바꾸며 DB(`app_settings`)에 저장한다(`.env`에 두지 않는다). 수신 이메일과 Slack webhook URL은 대시보드에서 관리하며 DB(`alert_channels`)에 저장한다. webhook URL은 화면에서 끝 4자리만 보이게 마스킹한다.
 - 대시보드 갱신은 30초 폴링이다. 웹소켓은 쓰지 않는다. UI 문구는 한국어로 쓴다.
