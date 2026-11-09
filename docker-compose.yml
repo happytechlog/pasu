@@ -26,7 +26,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-monitor}
       POSTGRES_DB: monitor
     ports:
-      - "127.0.0.1:5432:5432" # loopback only: the dev DB password is a well-known default
+      # Loopback only: the dev DB password is a well-known default. DB_PORT changes the host side only
+      # (e.g. when another PostgreSQL already uses 5432); containers still reach it as db:5432.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -61,7 +63,10 @@ services:
       <<: *app-env
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      # Host side only: WEB_PORT is the port on the server, 3000 is fixed inside the container (Dockerfile
+      # PORT and healthcheck), so never change the Dockerfile to move the port. WEB_BIND limits the host
+      # address (e.g. 127.0.0.1 behind nginx); unset = all interfaces, IPv4 and IPv6, as before.
+      - "${WEB_BIND:+${WEB_BIND}:}${WEB_PORT:-3000}:3000"
     depends_on:
       migrate: { condition: service_completed_successfully }
 

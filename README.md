@@ -20,7 +20,11 @@ cp .env.example .env          # BETTER_AUTH_SECRET 필수
 docker compose --profile app up -d --build --wait
 ```
 
-- `migrate`(1회 실행) → `web`(http://localhost:3000, `WEB_PORT`로 변경) + `worker` 순서로 뜬다.
+- `migrate`(1회 실행) → `web`(http://localhost:3000) + `worker` 순서로 뜬다.
+- 서버 쪽 포트는 `.env`로 바꾼다. `Dockerfile`의 3000은 컨테이너 **안** 포트(헬스체크도 이 포트를 본다)라서 고치지 않는다.
+  - `WEB_PORT`: 웹의 서버 포트(기본 3000). nginx 등이 프록시하는 포트와 맞춘다.
+  - `WEB_BIND`: 웹을 열 서버 주소. 비우면 모든 인터페이스(기존 동작), 리버스 프록시가 같은 서버에 있으면 `127.0.0.1`.
+  - `DB_PORT`: Postgres의 서버 포트(기본 5432, 항상 `127.0.0.1`). 다른 PostgreSQL이 5432를 쓰고 있을 때 바꾼다. 컨테이너끼리는 `db:5432`로 접속하므로 Docker 스택에는 영향이 없고, 로컬 실행용 `DATABASE_URL`의 포트만 같이 바꾼다.
 - 이미지는 `Dockerfile` 하나에서 타깃 두 개로 만든다.
   - `web`: Next.js standalone(`node server.js`). `/api/health`로 healthcheck한다.
   - `worker`: esbuild 번들(`node index.mjs`, node_modules 없음). 같은 이미지가 `node migrate.mjs`로 마이그레이션도 실행한다.
